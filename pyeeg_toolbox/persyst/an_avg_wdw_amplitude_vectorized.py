@@ -15,6 +15,7 @@ from collections import defaultdict
 from typing import Dict
 from pyeeg_toolbox.persyst.avg_wdw_cumulator import AvgWdwCumulator
 from pyeeg_toolbox.eeg_io.eeg_io import EEG_IO
+from pyeeg_toolbox.dsp.noise_index import get_noise_index_vec
 from scipy.signal import find_peaks, peak_prominences
 from studies_info import fr_four_patients
 from pyeeg_toolbox.persyst.an_avg_spike_amplitude import SpikeAmplitudeAnalyzer
@@ -104,28 +105,153 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         None
         """
         self.get_files_in_folder(file_extension)
-        sleep_stage_secs_counter_dict = self.get_sleep_stages_duration_sec()
-        self.pat_files_ls
 
         assert len(self.pat_files_ls) > 0, f"No EEG files found in folder {self.ieeg_data_path}"
-        Parallel(n_jobs=3)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc) for this_eeg_fpath in self.pat_files_ls)
+        assert len(self.pat_files_ls) >= 53, f"Duration of EEG data is less than 48 hours for patient {self.pat_id}"
 
-        # avg_spike_by_day_stage_ch_df = self.get_avg_wdw_by_day_by_ch(eeg_filepaths_byday_df, mtg_t, force_recalc)
-        # avg_spike_by_day_stage_ch_df = self.get_channel_coordinates(avg_spike_by_day_stage_ch_df)
-        # avg_spike_by_day_stage_ch_df = self.get_soz_info(avg_spike_by_day_stage_ch_df)
+        self.pat_files_ls = np.sort(self.pat_files_ls)
+        self.pat_files_ls = self.pat_files_ls[0:52]
 
-        # # Add patient ID to the dataframe
-        # avg_spike_by_day_stage_ch_df['PatID'] = self.pat_id
-        # cols = ['PatID'] + [col for col in avg_spike_by_day_stage_ch_df.columns if col != 'PatID']
-        # avg_spike_by_day_stage_ch_df = avg_spike_by_day_stage_ch_df[cols]
+        sleep_stage_secs_counter_dict = self.get_sleep_stages_duration_sec()
+        for k,v in sleep_stage_secs_counter_dict.items():
+            if k != "Unknown":
+                assert(np.round(sleep_stage_secs_counter_dict[k]/3600, decimals=1)>=0.5), f"Sleep stage {k} duration is less than 1 hour for patient {self.pat_id}"
+    
+        ni_th = 1
+        Parallel(n_jobs=6)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
 
-        # avg_spike_by_day_stage_ch_df.to_csv(self.output_path / f"{self.pat_id}_AvgSpikeWdwByDay.csv", index=False)
+        self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t)
+
+        #self.get_overall_ch_stage_spike_amplitude(file_extension=file_extension, mtg_t=mtg_t)
 
         pass
+
+    def get_spike_occ_rate_by_sleep_stage(self, file_extension:str='.lay', mtg_t:str='ir'):
+        stage_spike_colect_dict = {'Stage':[], 'StageDurationS':[], 'NrSpikes':[]}
+        for this_eeg_fpath in self.pat_files_ls:
+            eeg_reader = EEG_IO(eeg_filepath=this_eeg_fpath, mtg_t=mtg_t)
+            spike_wdw_indices, spk_df = self.get_detailed_spike_event(this_eeg_fpath, eeg_reader)
+
+            sleep_data_df = self.read_sleep_stages_data(this_eeg_fpath)
+            spike_sleep_stage_code = sleep_data_df.I1_1.to_numpy()
+            spike_sleep_stage_code = spike_sleep_stage_code[np.logical_not(np.isnan(spike_sleep_stage_code))]
+            spike_sleep_stage_name = np.array([self.sleep_stages_map[int(ss_code)] for ss_code in spike_sleep_stage_code])
+            for sname in np.unique(spike_sleep_stage_name):
+                stage_name = str(sname)
+                print(stage_name)
+                stage_spike_colect_dict['Stage'].append(stage_name)
+                stage_spike_colect_dict['StageDurationS'].append(np.sum(spike_sleep_stage_name==stage_name))
+                stage_spike_colect_dict['NrSpikes'].append(np.sum(spk_df.stage_name==stage_name))
+                pass
+            pass
+
+        stage_spike_colect_df = pd.DataFrame(stage_spike_colect_dict)
+        stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
+        pat_stage_spike_occrate_dict = {'PatID':[], 'Stage':[], 'SpikeOccRate':[]}
+        for stage_name in stages_ls:
+            stage_spike_cnt = np.sum(np.array(stage_spike_colect_dict['NrSpikes'])[np.array(stage_spike_colect_df.Stage)==stage_name])
+            stage_dur = np.sum(np.array(stage_spike_colect_dict['StageDurationS'])[np.array(stage_spike_colect_df.Stage)==stage_name])
+            stage_spike_occrate = stage_spike_cnt/(stage_dur/60)
+            pat_stage_spike_occrate_dict['PatID'].append(self.pat_id)
+            pat_stage_spike_occrate_dict['Stage'].append(stage_name)
+            pat_stage_spike_occrate_dict['SpikeOccRate'].append(stage_spike_occrate)
+            pass
+
+        pat_stage_spike_occrate_df = pd.DataFrame(pat_stage_spike_occrate_dict)
+        pat_stage_spike_occrate_fn = self.output_path / "Stage_Spike_Occurrence_Rate" / f"{self.pat_id}_StageSpikeOccurrenceRate.csv"
+        os.makedirs(pat_stage_spike_occrate_fn.parents[0], exist_ok=True)
+        pat_stage_spike_occrate_df.to_csv(pat_stage_spike_occrate_fn, index=False)
+        pass
+
+    def get_overall_ch_stage_spike_amplitude(self, file_extension:str='.lay', mtg_t:str='ir'):
+        spike_data_colect_dict = {'Channel':[], 'Stage':[], 'Amplitude':[], 'NrSpikes':[]}
+        for this_eeg_fpath in self.pat_files_ls:
+            eeg_reader = EEG_IO(eeg_filepath=this_eeg_fpath, mtg_t=mtg_t)
+            spike_cumulator_fn = self.output_path / f"CumulatedSpikes/{eeg_reader.filename.replace(".dat", '_AvgWdwCumulator.pickle')}"
+            if os.path.isfile(spike_cumulator_fn):
+                print(this_eeg_fpath.name)
+                spk_cum = self.load_spike_cumulator(spike_cumulator_fn)
+                sleep_stages_ls = list(self.sleep_stages_map.values())
+
+                for sleep_stage in sleep_stages_ls:
+                    if sleep_stage != "Unknown":
+                        for ch_idx, chname in enumerate(spk_cum.eeg_channels_ls):
+                            nr_spikes = spk_cum.nr_spikes[sleep_stage][ch_idx][0]
+                            avg_spike_signal = spk_cum.spike_cum_dict[sleep_stage][ch_idx]
+                            amplitude = np.max(avg_spike_signal)-np.min(avg_spike_signal)
+                            if nr_spikes>0:
+                                spike_data_colect_dict['Channel'].append(chname)
+                                spike_data_colect_dict['Stage'].append(sleep_stage)
+                                spike_data_colect_dict['Amplitude'].append(amplitude)
+                                spike_data_colect_dict['NrSpikes'].append(nr_spikes)
+                                pass
+
+
+            else:
+                print(f"File {spike_cumulator_fn} not found")
+
+            pass
+        pass
+
+        # SOZ
+        pat_id = self.pat_id
+        szr_info_fn = (''.join([c for c in pat_id if c.isdigit()]))+'_clinicalSzrInfo.csv'
+        szr_info_fpath = self.szr_info_data_path/ szr_info_fn
+        soz_chann_ls = self.parse_szr_info_file(szr_info_fpath)
+        soz_chann_ls = [c.lower() for c in soz_chann_ls]
+
+        spike_data_colect_df = pd.DataFrame(spike_data_colect_dict)
+        spike_channels_ls = np.sort(spike_data_colect_df['Channel'].unique())
+        spike_charact_dict = {'Stage':[], 'Channel':[], 'Amplitude':[], 'NrClipsWithSpikes':[], 'SOZ':[]}
+        for sleep_stage in sleep_stages_ls:
+            if sleep_stage != "Unknown":
+                for ch_idx, chname in enumerate(spike_channels_ls):
+                    spk_ampl_vec = spike_data_colect_df.Amplitude[np.logical_and((spike_data_colect_df['Stage']==sleep_stage).to_numpy(), (spike_data_colect_df['Channel']==chname).to_numpy())]
+                    spike_charact_dict['Stage'].append(sleep_stage)
+                    spike_charact_dict['Channel'].append(chname)
+                    spike_charact_dict['Amplitude'].append(np.mean(spk_ampl_vec))
+                    spike_charact_dict['NrClipsWithSpikes'].append(len(spk_ampl_vec))
+
+                    soz_flag = 0
+                    if chname in soz_chann_ls:
+                        soz_flag = 1
+                    spike_charact_dict['SOZ'].append(soz_flag)
+                    pass
+            pass
+        pass
+
+        spike_charact_df = pd.DataFrame(spike_charact_dict)
+        spike_charact_fn = self.output_path / "Spike_Characterized_Channels_NoNoise" / f"{pat_id}_AvgSpikeWdwActivity.csv"
+        os.makedirs(spike_charact_fn.parents[0], exist_ok=True)
+        spike_charact_df.to_csv(spike_charact_fn, index=False)
+        pass
+
 
 
    
     def get_detailed_spike_event(self, eeg_fpath, eeg_reader):
+        """
+        Extracts detailed spike event information from EEG data.
+
+        Parameters:
+        - eeg_fpath (str or Path): The file path to the EEG data file.
+        - eeg_reader (object): An object that provides methods to read EEG data, including the sampling frequency (fs) and the number of samples (n_samples).
+
+        Returns:
+        - sleep_data_df (DataFrame): A DataFrame containing sleep stage data.
+        - spike_data_df (DataFrame): A DataFrame containing spike event data, sorted by time.
+
+        The method performs the following steps:
+        1. Reads sleep stage data and spike detection data from the EEG file.
+        2. Sorts the spike data by time.
+        3. If no spikes are detected, returns None for both DataFrames.
+        4. Calculates the indices of the spike windows based on the spike center times and the sampling frequency.
+        5. Deletes invalid spike indices (e.g., spikes that start before the beginning of the recording or end after the end of the recording).
+        6. Returns the filtered spike data and sleep stage data.
+
+        Example usage:
+        sleep_data_df, spike_data_df = get_detailed_spike_event(eeg_fpath, eeg_reader)
+        """
         # Read sleep data and spike detections
         sleep_data_df = self.read_sleep_stages_data(eeg_fpath)
         spike_data_df = self.read_spike_data(eeg_fpath).sort_values(by=['Time'], ascending=True)
@@ -160,6 +286,12 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         spikes_end_samples = spikes_end_samples[spikes_to_keep]
         spike_sleep_stage_name = np.array([self.sleep_stages_map[int(ss_code)] for ss_code in spike_sleep_stage_code])
 
+        if np.sum(spikes_to_keep==False)==len(spikes_to_keep):
+            return None, None
+
+        # Get the NI from each spike
+        spike_wdw_ni = self.get_spike_wdw_NI(eeg_fpath, eeg_reader, spikes_center_samples)
+
         # Create list of ranges
         ranges = [(start, end) for start, end in zip(spikes_start_samples, spikes_end_samples)]
         # Create list of indices
@@ -172,13 +304,22 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                             'center_sec':spikes_center_sec_vec, 
                             'center_sample':spikes_center_samples, 
                             'start_sample':spikes_start_samples, 
-                            'end_sample':spikes_end_samples}
+                            'end_sample':spikes_end_samples,
+                            'spike_wdw_ni':spike_wdw_ni}
                             )
 
         return spike_wdw_indices, spikes_info_df
+    
+    def get_spike_wdw_NI(self, eeg_fpath:str="", eeg_reader:EEG_IO=None, spikes_center_samples:list[int]=0):
+        all_ch_sigs = eeg_reader.get_data()
+        spikes_center_time = (spikes_center_samples/eeg_reader.fs)
+        ni_tvec, chspec_ni_vec, chavg_ni_vec = get_noise_index_vec(fs=eeg_reader.fs, mtg_labels=eeg_reader.ch_names, mtg_signals=all_ch_sigs, notched=False, is_ieeg=True)
+        spikes_wdw_ni_idx = np.floor(spikes_center_time/10).astype(int)
+        spike_wdw_ni_vec = chavg_ni_vec[spikes_wdw_ni_idx]
+        return spike_wdw_ni_vec
 
 
-    def get_channel_avg_wdw_vectorized(self, this_pat_eeg_fpath, mtg_t:str='ir', force_recalc:bool=False)->AvgWdwCumulator:
+    def get_channel_avg_wdw_vectorized(self, this_pat_eeg_fpath, mtg_t:str='ir', force_recalc:bool=False, ni_th:float=1.0)->AvgWdwCumulator:
         """
         This function cumulates for each channel and sleep stage, the windows that temporally coincide with a spike event coming from any channel.
 
@@ -207,20 +348,56 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
             all_ch_sigs = eeg_reader.get_data()
             for eeg_chi, ch_name in enumerate(eeg_reader.ch_names):
                 ch_spike_wdws = all_ch_sigs[eeg_chi][spike_wdw_indices].reshape(nr_total_spikes, int(eeg_reader.fs))
-                
+
                 # Undersample the EEG segment containing the spikes
                 undersampled_spike_wdws = np.zeros((ch_spike_wdws.shape[0], fs_us))
                 for i, spike_wdw in enumerate(ch_spike_wdws):
                     undersampled_spike_wdws[i] = self.undersample_signal(spike_wdw, fs_us)
 
+                plot_ok = False
+                if plot_ok:
+                    for vsi in range(ch_spike_wdws.shape[0]):
+                        spike_wdw = ch_spike_wdws[vsi]
+                        spike_wdw_start_sec = spk_df.start_sample[vsi]/eeg_reader.fs
+                        time_vec = spike_wdw_start_sec+np.arange(len(spike_wdw))/eeg_reader.fs
+
+                        spike_wdw_us = ch_spike_wdws[vsi]
+                        time_vec_us = spike_wdw_start_sec+np.arange(len(spike_wdw_us))/fs_us
+
+                        plt.figure(figsize=(10,6))
+                        plt.subplot(1, 3, 1)
+                        plt.plot(time_vec, spike_wdw, '-k', linewidth=1)
+                        plt.plot([np.mean(time_vec)]*2, [np.min(spike_wdw), np.max(spike_wdw)], '--r', linewidth=1)
+                        plt.xlim(np.min(time_vec), np.max(time_vec))
+
+                        plt.subplot(1, 3, 2)
+                        plt.plot(time_vec_us,spike_wdw_us, '-k', linewidth=1)
+                        plt.plot([np.mean(time_vec_us)]*2, [np.min(spike_wdw_us), np.max(spike_wdw_us)], '--r', linewidth=1)
+                        plt.xlim(np.min(time_vec_us), np.max(time_vec_us))
+
+                        plt.subplot(1, 3, 3)
+                        plt.plot(time_vec_us, np.abs(spike_wdw_us), '-k', linewidth=1)
+                        plt.plot([np.mean(time_vec_us)]*2, [np.min(np.abs(spike_wdw_us)), np.max(np.abs(spike_wdw_us))], '--r', linewidth=1)
+                        plt.xlim(np.min(time_vec_us), np.max(time_vec_us))
+
+                        plt.suptitle(f"PatientID {eeg_reader.filename}\n SpikeNr:{vsi+1}/{len(spk_df)}\nSpikeCh:{ch_name}")
+
+                        # Display plot and wait for user input.
+                        #plot_ok = not plt.waitforbuttonpress()
+                        plt.waitforbuttonpress()
+                        plt.close()
+                        #if not plot_ok:
+                        #    return None
+
                 for k, stage_name in self.sleep_stages_map.items():
-                    stage_indices = np.where(spk_df.stage_name==stage_name)
-                    if len(stage_indices[0])>0:
-                        stage_spike_wdws = np.abs(undersampled_spike_wdws[stage_indices])
+                    #spike_wdw_sel_indices = np.where(np.logical_and((spk_df.stage_name==stage_name).to_numpy(), (spk_df.spike_wdw_ni<=ni_th).to_numpy() ))
+                    spike_wdw_sel_indices = np.where(spk_df.stage_name==stage_name)
+                    #print(len(stage_indices[0]), len(spike_wdw_sel_indices[0]))
+                    if len(spike_wdw_sel_indices[0])>0:
+                        stage_spike_wdws = np.abs(undersampled_spike_wdws[spike_wdw_sel_indices])
                         avg_spike = np.mean(stage_spike_wdws, axis=0)
                         nr_spikes_in_avg = stage_spike_wdws.shape[0]
-                        self.spike_cumulator.set_nr_spikes_in_avg(sleep_stage=stage_name, nr_spikes_in_avg=nr_spikes_in_avg)
-                        self.spike_cumulator.add_spike(stage_name, ch_name, avg_spike)
+                        self.spike_cumulator.add_spike(sleep_stage=stage_name, ch_name=ch_name, avg_spike_signal=avg_spike, nr_spikes=nr_spikes_in_avg)
                         pass
 
                 pass

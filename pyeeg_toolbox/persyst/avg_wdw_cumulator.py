@@ -23,10 +23,10 @@ class AvgWdwCumulator():
         self.sig_wdw_dur_s = sig_wdw_dur_s
         self.sig_wdw_fs = sig_wdw_fs
         nr_chs = len(self.eeg_channels_ls)
-        self.spike_counter = {stage:[0] for stage in self.sleep_stage_ls}
         self.spike_cum_dict = {stage:np.zeros(shape=(nr_chs, int(sig_wdw_dur_s*sig_wdw_fs))) for stage in self.sleep_stage_ls}   
-        self.spike_ampl = {stage:[[] for _ in range(nr_chs)] for stage in self.sleep_stage_ls}
-        self.spike_freq = {stage:[[] for _ in range(nr_chs)] for stage in self.sleep_stage_ls}
+        self.spike_ampl = {stage:np.zeros(shape=(nr_chs, 1)) for stage in self.sleep_stage_ls}  
+        self.spike_freq = {stage:np.zeros(shape=(nr_chs, 1)) for stage in self.sleep_stage_ls}
+        self.nr_spikes = {stage:np.zeros(shape=(nr_chs, 1)) for stage in self.sleep_stage_ls}
 
         for k in self.spike_cum_dict.keys():
             assert self.spike_cum_dict[k].shape[0] == nr_chs, f"Spike cumulator has wrong nr. channels for stage {k}"
@@ -44,19 +44,16 @@ class AvgWdwCumulator():
         chidx = self.eeg_channels_ls.index(ch_name.lower())
         return chidx
     
-    def set_nr_spikes_in_avg(self, sleep_stage:str=None, nr_spikes_in_avg:int=0):
-        self.spike_counter[sleep_stage][0] = nr_spikes_in_avg
-        pass
-
-    def add_spike(self, sleep_stage:str=None, ch_name:str=None, avg_spike_signal:np.array=None, amplitude:float=0, frequency:float=0):
+    def add_spike(self, sleep_stage:str=None, ch_name:str=None, avg_spike_signal:np.array=None, amplitude:float=0, frequency:float=0, nr_spikes:int=0):
         """
         Adds a spike signal to the spike counter and cumulator.
         """
         try:
             ch_idx = self.get_ch_idx(ch_name)
             self.spike_cum_dict[sleep_stage][ch_idx] = avg_spike_signal
-            self.spike_ampl[sleep_stage][ch_idx].append(amplitude)
-            self.spike_freq[sleep_stage][ch_idx].append(frequency)
+            self.spike_ampl[sleep_stage][ch_idx]= amplitude
+            self.spike_freq[sleep_stage][ch_idx]= frequency
+            self.nr_spikes[sleep_stage][ch_idx]= nr_spikes
 
         except Exception as e:
             print(e)

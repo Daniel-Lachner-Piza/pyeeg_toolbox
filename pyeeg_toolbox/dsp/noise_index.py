@@ -5,6 +5,7 @@ from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 from scipy.fft import fft
+from joblib import Parallel, delayed
 
 
 
@@ -23,31 +24,62 @@ def get_noise_index_vec(fs: float, mtg_labels: List[str], mtg_signals: np.ndarra
     wdw_step = wdw_length
     start_sample_vec = np.arange(0, nr_samples-wdw_length, wdw_step, dtype=int)
 
-    time_vec = np.zeros(len(start_sample_vec))
-    chspec_ni_vec = np.zeros((nr_mtgs, len(start_sample_vec)))
-    chavg_ni_vec = np.zeros(len(start_sample_vec))
+    # time_vec = np.zeros(len(start_sample_vec))
+    # chspec_ni_vec = np.zeros((nr_mtgs, len(start_sample_vec)))
+    # chavg_ni_vec = np.zeros(len(start_sample_vec))
 
     poly_order = 6
     ideal_freqs, ideal_spctrm_regression = get_ideal_signal_spectrum(
         fs, wdw_length, poly_order, notched, notch_freqs, is_ieeg)
+    
+    res = Parallel(n_jobs=16)(delayed(parallel_NI)(start_sample, wdw_length, fs, mtg_signals, mtg_labels, poly_order, ideal_freqs, ideal_spctrm_regression, notched, notch_freqs) for start_sample in start_sample_vec)
+    time_vec_p = np.zeros(len(start_sample_vec))
+    chspec_ni_vec_p = np.zeros((nr_mtgs, len(start_sample_vec)))
+    chavg_ni_vec_p = np.zeros(len(start_sample_vec))
+    for ni_wdw_idx in np.arange(len(start_sample_vec)):
+        time_vec_p[ni_wdw_idx] = res[ni_wdw_idx][0]
+        chspec_ni_vec_p[:, ni_wdw_idx] = res[ni_wdw_idx][1]
+        chavg_ni_vec_p[ni_wdw_idx] = res[ni_wdw_idx][2]
 
-    for si, start_sample in enumerate(start_sample_vec):
-        end_sample = start_sample + wdw_length
-        timestamp = start_sample/fs
-        data_wdw = mtg_signals[:, start_sample:end_sample]
+    # for si, start_sample in enumerate(start_sample_vec):
+    #     end_sample = start_sample + wdw_length
+    #     timestamp = start_sample/fs
+    #     data_wdw = mtg_signals[:, start_sample:end_sample]
 
-        results = get_ffts_and_regressions(fs, start_sample, mtg_labels, data_wdw,
-                                           poly_order, ideal_freqs, ideal_spctrm_regression, notched, notch_freqs)
+    #     results = get_ffts_and_regressions(fs, start_sample, mtg_labels, data_wdw,
+    #                                        poly_order, ideal_freqs, ideal_spctrm_regression, notched, notch_freqs)
 
-        mtgs_ni = getNI(results, ideal_spctrm_regression)
+    #     mtgs_ni = getNI(results, ideal_spctrm_regression)
 
-        time_vec[si] = timestamp
-        chspec_ni_vec[:, si] = mtgs_ni
-        chavg_ni_vec[si] = np.mean(mtgs_ni)
-        pass
+    #     time_vec[si] = timestamp
+    #     chspec_ni_vec[:, si] = mtgs_ni
+    #     chavg_ni_vec[si] = np.mean(mtgs_ni)
+    #     pass
+
+    # for wdw_idx in np.arange(len(time_vec)): 
+    #     assert time_vec_p[wdw_idx]==time_vec[wdw_idx], f"Time vec mismatch at index {wdw_idx}"
+    #     assert chavg_ni_vec_p[wdw_idx]==chavg_ni_vec[wdw_idx], f"Ch avg mismatch at index {wdw_idx}"
+    #     for ch_idx in np.arange(chspec_ni_vec_p.shape[0]):
+    #         assert chspec_ni_vec_p[ch_idx, wdw_idx]==chspec_ni_vec[ch_idx, wdw_idx], f"Ch spec mismatch at index {wdw_idx} and channel {ch_idx}"
+
+    return time_vec_p, chspec_ni_vec_p, chavg_ni_vec_p
+
+def parallel_NI(start_sample, wdw_length, fs, mtg_signals, mtg_labels, poly_order, ideal_freqs, ideal_spctrm_regression, notched, notch_freqs):
+    end_sample = start_sample + wdw_length
+    timestamp = start_sample/fs
+    data_wdw = mtg_signals[:, start_sample:end_sample]
+
+    results = get_ffts_and_regressions(fs, start_sample, mtg_labels, data_wdw,
+                                poly_order, ideal_freqs, ideal_spctrm_regression, notched, notch_freqs)
+
+    mtgs_ni = getNI(results, ideal_spctrm_regression)
+
+    time_vec = timestamp
+    chspec_ni_vec = mtgs_ni
+    chavg_ni_vec = np.mean(mtgs_ni)
 
     return time_vec, chspec_ni_vec, chavg_ni_vec
-
+    
 
 def getNI(results, ideal_spctrm_regression):
     fft_freqs = results[0]
@@ -132,13 +164,20 @@ def get_ffts_and_regressions(fs: float, start_sample: int, mtg_labels: List[str]
         chann_spctrm[-1*movmean_order:] = chann_spctrm[-1*movmean_order-1]
 
         chann_spctrm = rescale(np.log10(chann_spctrm))
+        
+        bad_wdw = np.sum(wdw_signal==0.0)==len(wdw_signal) or np.sum(np.isnan(chann_spctrm))>0
 
-        # Get estimate of channel spectrum
-        poly = PolynomialFeatures(degree=poly_order)
-        lin_reg = LinearRegression()
-        x_poly = poly.fit_transform(fft_freqs.reshape(-1, 1))
-        lin_reg.fit(x_poly, chann_spctrm)
-        chDataSpctrm_reg = lin_reg.predict(x_poly)
+        if not(bad_wdw):
+            # Get estimate of channel spectrum
+            poly = PolynomialFeatures(degree=poly_order)
+            lin_reg = LinearRegression()
+            x_poly = poly.fit_transform(fft_freqs.reshape(-1, 1))
+            lin_reg.fit(x_poly, chann_spctrm)
+            chDataSpctrm_reg = lin_reg.predict(x_poly)
+
+        else:
+            chann_spctrm = np.random.rand(len(fft_freqs))
+            chDataSpctrm_reg = np.random.rand(len(fft_freqs))
 
         all_ch_spctrms[mi, :] = chann_spctrm
         all_ch_spctrm_regs[mi, :] = chDataSpctrm_reg
@@ -148,9 +187,9 @@ def get_ffts_and_regressions(fs: float, start_sample: int, mtg_labels: List[str]
         if plot_ch_fft:
             plt.plot(fft_freqs, chann_spctrm, label="Chann Spectrum")
             plt.plot(fft_freqs, chDataSpctrm_reg,
-                     label="Chann Spectrum Regression")
+                    label="Chann Spectrum Regression")
             plt.plot(ideal_freqs, ideal_spctrm_regression,
-                     label="Ideal Spectrum")
+                    label="Ideal Spectrum")
             plt.title('Spectrum')
             plt.xlabel('Frequency[Hz]')
             plt.ylabel('Amplitude')
@@ -195,8 +234,10 @@ def get_ideal_signal_spectrum(fs, wdw_length, poly_order, notched=False, harmon_
     # determine which frequencies to use for extrapolation of the ideal spectrum
     fft_freqs = np.arange(0, np.round(nr_samples/2))*(fs/nr_samples)
 
+    max_eeg_freq = 341.33
+
     # remove the notched frequencies from the spectrum analysis
-    keep_freqs_sel = np.logical_and(fft_freqs >= 1, fft_freqs <= 341.33)
+    keep_freqs_sel = np.logical_and(fft_freqs >= 1, fft_freqs <= max_eeg_freq)
     if notched:
         for hfi in range(0, len(harmon_freqs)):
             # range of frequecies of the electro-magnetic interference (EMI)
@@ -207,6 +248,9 @@ def get_ideal_signal_spectrum(fs, wdw_length, poly_order, notched=False, harmon_
             keep_freqs_sel[sel_vec] = False
     fft_freqs = fft_freqs[keep_freqs_sel]
 
+    if max_eeg_freq > fft_freqs[-1]:
+        max_eeg_freq = fft_freqs[-1]
+
     # get ideal scalp EEG spectrum and determine which frequencies to use for extrapolation
     ideal_freqs, ideal_spctrm = get_perf_EEG_chann_avg_regression_vals()
     
@@ -214,7 +258,7 @@ def get_ideal_signal_spectrum(fs, wdw_length, poly_order, notched=False, harmon_
         ideal_freqs, ideal_spctrm = get_perf_iEEG_chann_avg_regression_vals()
 
     # remove the notched frequencies from the saved "ideal"  scalp EEG spectrum
-    keep_freqs_sel = np.logical_and(ideal_freqs >= 1, ideal_freqs <= 341.33)
+    keep_freqs_sel = np.logical_and(ideal_freqs >= 1, ideal_freqs <= max_eeg_freq)
     if notched:
         for hfi in range(0, len(harmon_freqs)):
             # range of frequecies of the electro-magnetic interference (EMI)
@@ -243,7 +287,9 @@ def get_ideal_signal_spectrum(fs, wdw_length, poly_order, notched=False, harmon_
         plt.plot(fft_freqs, ideal_spctrm_regression,
                  label=f"Estimation of Ideal Spectrum (NI={ni_val:.2f})")
         plt.legend()
-        plt.show(block=False)
+        # plt.show(block=False)
+        # plt.close()
+        plt.waitforbuttonpress()
         plt.close()
 
     return ideal_freqs, ideal_spctrm_regression

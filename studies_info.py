@@ -44,3 +44,35 @@ def fr_four_patients():
     
     return study_info
     
+def fr_ten_patients():
+    study_info = EEG_Study_Info()
+    study_info.dataset_name = "Freiburg_Ten"
+    sys_info = get_system_info()
+    # Define directories containing the EEG data
+    if sys_info['hostname']=="LAPTOP-TFQFNF6U" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux": 
+        study_info.eeg_data_path = Path("F:/FREIBURG_Simultaneous_OneHrFiles/")
+    elif sys_info['hostname']=="DLP" and sys_info['machine']=="AMD64" and sys_info['system']=="Windows": 
+        study_info.eeg_data_path = Path("F:/FREIBURG_Simultaneous_OneHrFiles/")
+    elif sys_info['hostname']=="dlp" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux":
+        study_info.eeg_data_path = Path("/media/dlp/Extreme Pro/FREIBURG_Simultaneous_OneHrFiles/")
+    
+    study_info.sleep_data_path = study_info.eeg_data_path
+    study_info.ispikes_data_path = study_info.eeg_data_path
+    study_info.channel_coordinates_data_path = study_info.eeg_data_path / "iEEG_Electrode_Coordinates"
+    study_info.seizure_info_data_path = study_info.eeg_data_path / "iEEG_Seizure_Info"
+
+    # Define the names of the folders in the data_path directory that contain the files from each patient. Define also the list of bad channels  
+    study_info.patients = {
+        'pat_FR_253':['HRC5', 'HP1', 'HP2', 'HP3'],
+        'pat_FR_970':['GC1'], 
+        'pat_FR_1084':['M1', 'M2'], 
+        'pat_FR_1096':['LDH1'],
+        'pat_FR_548':[''], #duration of 24 hours only
+        #'pat_FR_916':[''],
+        #'pat_FR_922':[''], #duration of 24 hours only
+        #'pat_FR_958':[''], # N1 duration is 0 within 48 hours
+        'pat_FR_1073':[''],
+        'pat_FR_1125':[''],
+        }
+    
+    return study_info

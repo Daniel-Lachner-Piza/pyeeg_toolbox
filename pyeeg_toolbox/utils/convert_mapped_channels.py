@@ -2,7 +2,7 @@ import pandas as pd
 
 
 def correct_1096_chnames(chann_ls):
-    ch_map_fpath = "F:/FREIBURG_Simultaneous_OneHrFiles/iEEG_Electrode_Coordinates/FR1096_Chann_Map.csv"
+    ch_map_fpath = "F:/FREIBURG_Simultaneous_OneHrFiles/iEEG_Seizure_Info/FR1096_Chann_Map.csv"
     ch_map_df = pd.read_csv(ch_map_fpath)
     new_chann_ls = []
     for ch in chann_ls:
