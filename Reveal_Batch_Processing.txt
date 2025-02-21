@@ -34,7 +34,7 @@ iEEG Spike Detection
 - Start Reveal and Pause if it has started
 - disable Reveal Autostart and Save Settings (File->AutoStart->Save Auto), otherwise the the autostart will not allow changing the protocol
 - Close and clear trends again
-- Open Reveal agan, disable Reveal Autostart and Save Settings (File->AutoStart->Save Auto), otherwise the the autostart will not allow changing the protocol 
+- Open Reveal agan
 - Set Protocol so that the correct channels are selected (Referential Montage, exclude noisy, Scalp and non-EEG Channels)
 - Save protocol
 - Enable Autostart again and Save Settings
