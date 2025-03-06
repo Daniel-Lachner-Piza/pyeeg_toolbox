@@ -192,10 +192,6 @@ def predict_soz_with_spike_occ_rate():
             train_set_df = stage_data_df[stage_data_df.Patient!=pat_id]
             test_set_df = stage_data_df[stage_data_df.Patient==pat_id]
 
-            # scaler = StandardScaler()
-            # train_set_df.Amplitude = scaler.fit_transform(train_set_df.Amplitude.values.reshape(-1, 1))
-            # test_set_df.Amplitude = scaler.transform(test_set_df.Amplitude.values.reshape(-1, 1))
-
             # Oversample to have equal positives and negatives
             #train_set_df = oversample_patients(train_set_df)
 
@@ -253,7 +249,7 @@ def predict_soz_with_spike_occ_rate():
 
     fig, axs = plt.subplots(1, 2, figsize=FIGSIZE)
     box_plot = sns.boxplot(data=prediction_results_df[prediction_results_df.Metric=='AUROC'], x='Stage', y='Value', hue='Stage', palette=STAGES_COLORS, ax=axs[0])
-    axs[0].set_title("Area under the ROC Curve")
+    axs[0].set_title("Area under the ROC Curve\nNr. Patients={nr_pats}")
     axs[0].set_ylabel("AUROC")
     medians_df = prediction_results_df[prediction_results_df.Metric=='AUROC'][['Stage', 'Value']].groupby(['Stage']).median().reset_index()
     vertical_offset = prediction_results_df[prediction_results_df.Metric=='AUROC'].Value.median() * 0.05 # offset from median for display
@@ -264,7 +260,7 @@ def predict_soz_with_spike_occ_rate():
         pass
 
     box_plot = sns.boxplot(data=prediction_results_df[prediction_results_df.Metric=='MCC'], x='Stage', y='Value', hue='Stage', palette=STAGES_COLORS, ax=axs[1])
-    axs[1].set_title("Matthews Correlation Coefficient\nNr. Patients={nr_pats}")
+    axs[1].set_title(f"Matthews Correlation Coefficient\nNr. Patients={nr_pats}")
     axs[1].set_ylabel("MCC")
     medians_df = prediction_results_df[prediction_results_df.Metric=='MCC'][['Stage', 'Value']].groupby(['Stage']).median().reset_index()
     vertical_offset = prediction_results_df[prediction_results_df.Metric=='MCC'].Value.median() * 0.05 # offset from median for display
@@ -274,12 +270,19 @@ def predict_soz_with_spike_occ_rate():
         box_plot.text(x= xtick, y=median_val, s=median_str, horizontalalignment='center',size='x-large',color='w',weight='semibold')
         pass
 
+    plt.get_current_fig_manager().full_screen_toggle()
+    plt.suptitle(f"Prediction of SOZ\nNr. Patients={nr_pats}")
+    plt.tight_layout()
+    plt.savefig(images_output_path / "SOZ_Prediction.png")
+    #plt.waitforbuttonpress()
+    plt.close()
+
     plt.waitforbuttonpress()
     plt.close()
 
 
 if __name__ == "__main__":
-    plot_sleep_stage_durations()
-    plot_spike_occ_rate()
-    hypothesis_test_soz_vs_nonsoz()
+    # plot_sleep_stage_durations()
+    # plot_spike_occ_rate()
+    # hypothesis_test_soz_vs_nonsoz()
     predict_soz_with_spike_occ_rate()
