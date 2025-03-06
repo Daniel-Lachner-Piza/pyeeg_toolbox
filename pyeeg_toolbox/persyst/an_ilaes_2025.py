@@ -277,10 +277,6 @@ def predict_soz_with_spike_occ_rate():
     #plt.waitforbuttonpress()
     plt.close()
 
-    plt.waitforbuttonpress()
-    plt.close()
-
-
 if __name__ == "__main__":
     plot_sleep_stage_durations()
     plot_spike_occ_rate()
