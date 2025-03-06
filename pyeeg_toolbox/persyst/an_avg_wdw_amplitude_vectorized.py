@@ -146,8 +146,6 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         pat_stage_spike_occrate_fn = self.output_path / "Stage_Spike_Occurrence_Rate" / f"{self.pat_id}_StageSpikeOccurrenceRate.csv"
         os.makedirs(pat_stage_spike_occrate_fn.parents[0], exist_ok=True)
 
-        force_recalc = True
-
         if not os.path.isfile(pat_stage_spike_occrate_fn) or force_recalc:
 
             for this_eeg_fpath in self.pat_files_ls:
