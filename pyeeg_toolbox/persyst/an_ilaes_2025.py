@@ -90,7 +90,7 @@ def plot_sleep_stage_durations():
     for i, patch in enumerate(patches):
       texts[i].set_color(patch.get_facecolor())
     axs.set_ylabel("Relative Duration of Sleep Stages (%)", fontsize=24)
-    axs.set_title(f"Propottion of summed duration of Sleep Stages\nNr.Patients = {nr_pats}", fontsize=24, color='black')
+    axs.set_title(f"Proportion of summed duration of Sleep Stages\nNr.Patients = {nr_pats}", fontsize=24, color='black')
     pass
     #plt.legend(loc='lower right', fontsize=24)
 
@@ -282,7 +282,7 @@ def predict_soz_with_spike_occ_rate():
 
 
 if __name__ == "__main__":
-    # plot_sleep_stage_durations()
-    # plot_spike_occ_rate()
-    # hypothesis_test_soz_vs_nonsoz()
+    plot_sleep_stage_durations()
+    plot_spike_occ_rate()
+    hypothesis_test_soz_vs_nonsoz()
     predict_soz_with_spike_occ_rate()
