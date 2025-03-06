@@ -170,3 +170,7 @@ Output/pat_FR_1096_SpikeCumulator.pickle
 
 # Translations
 *Cumulator.pickle
+
+
+# Distribution / packaging
+*.csv

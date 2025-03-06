@@ -44,7 +44,7 @@ def fr_four_patients():
     
     return study_info
     
-def fr_ten_patients():
+def fr_ILAES2025_patients():
     study_info = EEG_Study_Info()
     study_info.dataset_name = "Freiburg_Ten"
     sys_info = get_system_info()
@@ -63,15 +63,24 @@ def fr_ten_patients():
 
     # Define the names of the folders in the data_path directory that contain the files from each patient. Define also the list of bad channels  
     study_info.patients = {
+        #'pat_FR_139':[''], # N1 duration is 0 within 48 hours
         'pat_FR_253':['HRC5', 'HP1', 'HP2', 'HP3'],
+        'pat_FR_264':[''], # SOZ channels are renamed
+        'pat_FR_273':[''], # SOZ channels are renamed
+        'pat_FR_384':[''],
+        'pat_FR_442':[''],
+        'pat_FR_548':[''],
+        'pat_FR_565':[''],
+        'pat_FR_583':[''],
+        'pat_FR_590':[''],
+        'pat_FR_862':[''],
+        'pat_FR_916':[''],
+        # 'pat_FR_922':[''], #duration of 24 hours only
+        #'pat_FR_958':[''], # N1 duration is 0 within 48 hours
         'pat_FR_970':['GC1'], 
+        'pat_FR_1073':[''],
         'pat_FR_1084':['M1', 'M2'], 
         'pat_FR_1096':['LDH1'],
-        'pat_FR_548':[''], #duration of 24 hours only
-        #'pat_FR_916':[''],
-        #'pat_FR_922':[''], #duration of 24 hours only
-        #'pat_FR_958':[''], # N1 duration is 0 within 48 hours
-        'pat_FR_1073':[''],
         'pat_FR_1125':[''],
         }
     

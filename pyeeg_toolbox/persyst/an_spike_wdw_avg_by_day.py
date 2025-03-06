@@ -18,7 +18,6 @@ from pyeeg_toolbox.eeg_io.eeg_io import EEG_IO
 from scipy.signal import find_peaks, peak_prominences
 from studies_info import fr_four_patients
 from pyeeg_toolbox.persyst.an_avg_spike_amplitude import SpikeAmplitudeAnalyzer
-from pyeeg_toolbox.utils.convert_mapped_channels import correct_1096_chnames
 from statsmodels.stats.multivariate import test_mvmean_2indep
 from hotelling.stats import hotelling_t2
 

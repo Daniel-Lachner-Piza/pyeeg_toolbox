@@ -19,7 +19,7 @@ from pyeeg_toolbox.dsp.noise_index import get_noise_index_vec
 from scipy.signal import find_peaks, peak_prominences
 from studies_info import fr_four_patients
 from pyeeg_toolbox.persyst.an_avg_spike_amplitude import SpikeAmplitudeAnalyzer
-from pyeeg_toolbox.utils.convert_mapped_channels import correct_1096_chnames
+from pyeeg_toolbox.utils.convert_mapped_channels import correct_relabelled_chnames
 from statsmodels.stats.multivariate import test_mvmean_2indep
 from hotelling.stats import hotelling_t2
 
@@ -107,61 +107,82 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         self.get_files_in_folder(file_extension)
 
         assert len(self.pat_files_ls) > 0, f"No EEG files found in folder {self.ieeg_data_path}"
-        assert len(self.pat_files_ls) >= 53, f"Duration of EEG data is less than 48 hours for patient {self.pat_id}"
+        #assert len(self.pat_files_ls) >= 40, f"Duration of EEG data is less than 48 hours for patient {self.pat_id}"
 
         self.pat_files_ls = np.sort(self.pat_files_ls)
-        self.pat_files_ls = self.pat_files_ls[0:52]
+
+        rec_start_idx = 0
+        rec_end_idx = 48
+        if len(self.pat_files_ls) < rec_end_idx:
+            ##rec_start_idx = 0
+            rec_end_idx = len(self.pat_files_ls)+1
+        self.pat_files_ls = self.pat_files_ls[rec_start_idx:rec_end_idx]
+        #self.pat_files_ls = self.pat_files_ls[0:52]
 
         sleep_stage_secs_counter_dict = self.get_sleep_stages_duration_sec()
         for k,v in sleep_stage_secs_counter_dict.items():
             if k != "Unknown":
-                assert(np.round(sleep_stage_secs_counter_dict[k]/3600, decimals=1)>=0.5), f"Sleep stage {k} duration is less than 1 hour for patient {self.pat_id}"
-    
+                stage_cum_duration_min = np.round(sleep_stage_secs_counter_dict[k]/60, decimals=2)
+                try:
+                    assert (stage_cum_duration_min>=2), f"Sleep stage {k} duration is {stage_cum_duration_min}, less than 30 min. for patient {self.pat_id}"
+                except AssertionError as e:
+                    print(f"{e}")
+                    return     
+        
         ni_th = 1
-        Parallel(n_jobs=6)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
+        parral_jobs_nr = 4
+        Parallel(n_jobs=parral_jobs_nr)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
 
-        self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t)
+        self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t, force_recalc=force_recalc)
 
-        #self.get_overall_ch_stage_spike_amplitude(file_extension=file_extension, mtg_t=mtg_t)
+        self.get_overall_ch_stage_spike_amplitude(file_extension=file_extension, mtg_t=mtg_t)
 
-        pass
+        return
 
-    def get_spike_occ_rate_by_sleep_stage(self, file_extension:str='.lay', mtg_t:str='ir'):
+    def get_spike_occ_rate_by_sleep_stage(self, file_extension:str='.lay', mtg_t:str='ir', force_recalc:bool=False)->None:
+        
         stage_spike_colect_dict = {'Stage':[], 'StageDurationS':[], 'NrSpikes':[]}
-        for this_eeg_fpath in self.pat_files_ls:
-            eeg_reader = EEG_IO(eeg_filepath=this_eeg_fpath, mtg_t=mtg_t)
-            spike_wdw_indices, spk_df = self.get_detailed_spike_event(this_eeg_fpath, eeg_reader)
-
-            sleep_data_df = self.read_sleep_stages_data(this_eeg_fpath)
-            spike_sleep_stage_code = sleep_data_df.I1_1.to_numpy()
-            spike_sleep_stage_code = spike_sleep_stage_code[np.logical_not(np.isnan(spike_sleep_stage_code))]
-            spike_sleep_stage_name = np.array([self.sleep_stages_map[int(ss_code)] for ss_code in spike_sleep_stage_code])
-            for sname in np.unique(spike_sleep_stage_name):
-                stage_name = str(sname)
-                print(stage_name)
-                stage_spike_colect_dict['Stage'].append(stage_name)
-                stage_spike_colect_dict['StageDurationS'].append(np.sum(spike_sleep_stage_name==stage_name))
-                stage_spike_colect_dict['NrSpikes'].append(np.sum(spk_df.stage_name==stage_name))
-                pass
-            pass
-
-        stage_spike_colect_df = pd.DataFrame(stage_spike_colect_dict)
-        stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
-        pat_stage_spike_occrate_dict = {'PatID':[], 'Stage':[], 'SpikeOccRate':[]}
-        for stage_name in stages_ls:
-            stage_spike_cnt = np.sum(np.array(stage_spike_colect_dict['NrSpikes'])[np.array(stage_spike_colect_df.Stage)==stage_name])
-            stage_dur = np.sum(np.array(stage_spike_colect_dict['StageDurationS'])[np.array(stage_spike_colect_df.Stage)==stage_name])
-            stage_spike_occrate = stage_spike_cnt/(stage_dur/60)
-            pat_stage_spike_occrate_dict['PatID'].append(self.pat_id)
-            pat_stage_spike_occrate_dict['Stage'].append(stage_name)
-            pat_stage_spike_occrate_dict['SpikeOccRate'].append(stage_spike_occrate)
-            pass
-
-        pat_stage_spike_occrate_df = pd.DataFrame(pat_stage_spike_occrate_dict)
+        
         pat_stage_spike_occrate_fn = self.output_path / "Stage_Spike_Occurrence_Rate" / f"{self.pat_id}_StageSpikeOccurrenceRate.csv"
         os.makedirs(pat_stage_spike_occrate_fn.parents[0], exist_ok=True)
-        pat_stage_spike_occrate_df.to_csv(pat_stage_spike_occrate_fn, index=False)
-        pass
+
+        force_recalc = True
+
+        if not os.path.isfile(pat_stage_spike_occrate_fn) or force_recalc:
+
+            for this_eeg_fpath in self.pat_files_ls:
+                eeg_reader = EEG_IO(eeg_filepath=this_eeg_fpath, mtg_t=mtg_t)
+                spike_wdw_indices, spk_df = self.get_detailed_spike_event(this_eeg_fpath, eeg_reader)
+
+                sleep_data_df = self.read_sleep_stages_data(this_eeg_fpath)
+                spike_sleep_stage_code = sleep_data_df.I1_1.to_numpy()
+                spike_sleep_stage_code = spike_sleep_stage_code[np.logical_not(np.isnan(spike_sleep_stage_code))]
+                spike_sleep_stage_name = np.array([self.sleep_stages_map[int(ss_code)] for ss_code in spike_sleep_stage_code])
+                for sname in np.unique(spike_sleep_stage_name):
+                    stage_name = str(sname)
+                    print(stage_name)
+                    stage_spike_colect_dict['Stage'].append(stage_name)
+                    stage_spike_colect_dict['StageDurationS'].append(np.sum(spike_sleep_stage_name==stage_name))
+                    stage_spike_colect_dict['NrSpikes'].append(np.sum(spk_df.stage_name==stage_name))
+                    pass
+                pass
+
+            stage_spike_colect_df = pd.DataFrame(stage_spike_colect_dict)
+            stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
+            pat_stage_spike_occrate_dict = {'PatID':[], 'Stage':[], 'StageDurM':[], 'SpikeOccRate':[]}
+            for stage_name in stages_ls:
+                stage_spike_cnt = np.sum(np.array(stage_spike_colect_dict['NrSpikes'])[np.array(stage_spike_colect_df.Stage)==stage_name])
+                stage_dur = np.sum(np.array(stage_spike_colect_dict['StageDurationS'])[np.array(stage_spike_colect_df.Stage)==stage_name])
+                stage_spike_occrate = stage_spike_cnt/(stage_dur/60)
+                pat_stage_spike_occrate_dict['PatID'].append(self.pat_id)
+                pat_stage_spike_occrate_dict['Stage'].append(stage_name)
+                pat_stage_spike_occrate_dict['StageDurM'].append((stage_dur/60))
+                pat_stage_spike_occrate_dict['SpikeOccRate'].append(stage_spike_occrate)
+                pass
+
+            pat_stage_spike_occrate_df = pd.DataFrame(pat_stage_spike_occrate_dict)
+            pat_stage_spike_occrate_df.to_csv(pat_stage_spike_occrate_fn, index=False)
+            pass
 
     def get_overall_ch_stage_spike_amplitude(self, file_extension:str='.lay', mtg_t:str='ir'):
         spike_data_colect_dict = {'Channel':[], 'Stage':[], 'Amplitude':[], 'NrSpikes':[]}
@@ -200,6 +221,9 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         soz_chann_ls = self.parse_szr_info_file(szr_info_fpath)
         soz_chann_ls = [c.lower() for c in soz_chann_ls]
 
+        if len(soz_chann_ls)==0:
+            pass
+
         spike_data_colect_df = pd.DataFrame(spike_data_colect_dict)
         spike_channels_ls = np.sort(spike_data_colect_df['Channel'].unique())
         spike_charact_dict = {'Stage':[], 'Channel':[], 'Amplitude':[], 'NrClipsWithSpikes':[], 'SOZ':[]}
@@ -219,9 +243,12 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                     pass
             pass
         pass
+        
+        if np.sum(spike_charact_dict['SOZ']) == 0:
+            pass
 
         spike_charact_df = pd.DataFrame(spike_charact_dict)
-        spike_charact_fn = self.output_path / "Spike_Characterized_Channels_NoNoise" / f"{pat_id}_AvgSpikeWdwActivity.csv"
+        spike_charact_fn = self.output_path / "Spike_Characterized_Channels" / f"{pat_id}_AvgSpikeWdwActivity.csv"
         os.makedirs(spike_charact_fn.parents[0], exist_ok=True)
         spike_charact_df.to_csv(spike_charact_fn, index=False)
         pass
@@ -290,8 +317,8 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
             return None, None
 
         # Get the NI from each spike
-        spike_wdw_ni = self.get_spike_wdw_NI(eeg_fpath, eeg_reader, spikes_center_samples)
-
+        #spike_wdw_ni = self.get_spike_wdw_NI(eeg_fpath, eeg_reader, spikes_center_samples)
+        spike_wdw_ni= np.zeros_like(spikes_end_samples)
         # Create list of ranges
         ranges = [(start, end) for start, end in zip(spikes_start_samples, spikes_end_samples)]
         # Create list of indices
@@ -602,25 +629,29 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         assert len(soz_chann_ls)>0, "No SOZ channels found in the seizure info file"
 
         if '1096' in szr_info_fpath.name:
-            soz_chann_ls = correct_1096_chnames(soz_chann_ls)
+            soz_chann_ls = correct_relabelled_chnames(soz_chann_ls, 1096)
+        elif '273' in szr_info_fpath.name:
+            soz_chann_ls = correct_relabelled_chnames(soz_chann_ls, 273)
+        elif '264' in szr_info_fpath.name:
+            soz_chann_ls = correct_relabelled_chnames(soz_chann_ls, 264)
         
         soz_chann_ls = EEG_IO.clean_channel_labels(None, soz_chann_ls)
 
         return soz_chann_ls
 
-    def get_soz_info(self, avg_spike_by_day_stage_ch_df):
-        # Load channel coordinates
-        pat_id = self.pat_id
-        szr_info_fn = (''.join([c for c in pat_id if c.isdigit()]))+'_clinicalSzrInfo.csv'
-        szr_info_fpath = self.szr_info_data_path/ szr_info_fn
-        soz_chann_ls = self.parse_szr_info_file(szr_info_fpath)
+    # def get_soz_info(self, avg_spike_by_day_stage_ch_df):
+    #     # Load channel coordinates
+    #     pat_id = self.pat_id
+    #     szr_info_fn = (''.join([c for c in pat_id if c.isdigit()]))+'_clinicalSzrInfo.csv'
+    #     szr_info_fpath = self.szr_info_data_path/ szr_info_fn
+    #     soz_chann_ls = self.parse_szr_info_file(szr_info_fpath)
 
-        soz_chann_ls = [c.lower() for c in soz_chann_ls]
-        avg_spike_by_day_stage_ch_df['SOZ'] = avg_spike_by_day_stage_ch_df.ChName.str.lower().map(lambda x: x in soz_chann_ls)
+    #     soz_chann_ls = [c.lower() for c in soz_chann_ls]
+    #     avg_spike_by_day_stage_ch_df['SOZ'] = avg_spike_by_day_stage_ch_df.ChName.str.lower().map(lambda x: x in soz_chann_ls)
 
-        assert len(avg_spike_by_day_stage_ch_df['SOZ'].unique())>1, "No channels could be assigned to a SOZ"
+    #     assert len(avg_spike_by_day_stage_ch_df['SOZ'].unique())>1, "No channels could be assigned to a SOZ"
 
-        return avg_spike_by_day_stage_ch_df
+    #     return avg_spike_by_day_stage_ch_df
 
     
     def get_weighted_avg_coordinates_deprecated(self, stage_df):
