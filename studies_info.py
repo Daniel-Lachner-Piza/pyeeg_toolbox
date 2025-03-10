@@ -68,6 +68,7 @@ def fr_ILAES2025_patients():
         'pat_FR_264':[''], # SOZ channels are renamed
         'pat_FR_273':[''], # SOZ channels are renamed
         'pat_FR_384':[''],
+        'pat_FR_375':[''],
         'pat_FR_442':[''],
         'pat_FR_548':[''],
         'pat_FR_565':[''],
