@@ -267,11 +267,18 @@ class EEG_IO:
 
         for chname_a, chidx_a in zip(ieeg_ch_labels, ieeg_chs_indxs):
             hw_group_a = ''.join([c for c in chname_a if not c.isdigit()])
-            contact_nr_a = int(''.join([c for c in chname_a if c.isdigit()]))
+            try:
+                contact_nr_a = int(''.join([c for c in chname_a if c.isdigit()]))
+            except ValueError:
+                print(f"Invalid channel name format: {chname_a}")
+                continue
 
             for chname_b, chidx_b in zip(ieeg_ch_labels, ieeg_chs_indxs):
                 hw_group_b = ''.join([c for c in chname_b if not c.isdigit()])
-                contact_nr_b = int(''.join([c for c in chname_b if c.isdigit()]))
+                try:
+                    contact_nr_b = int(''.join([c for c in chname_b if c.isdigit()]))
+                except ValueError:
+                    continue
 
                 if (hw_group_a==hw_group_b) and (contact_nr_b-contact_nr_a==1):
                     mtg_name = f"{chname_a}-{chname_b}"
@@ -279,6 +286,46 @@ class EEG_IO:
                     mtg_chs_indices_ls.append((chidx_a, chidx_b))
         return mtg_labels_ls, mtg_chs_indices_ls
 
+
+    def remove_natus_virtual_channels(self) -> Tuple[list, list]:
+        
+        accepted_channs = ["c3", "c4", "cz"]
+        clean_ch_names = []
+        clean_ch_indices = []
+        for idx in range(len(self.ch_names)):
+            mtg_name = self.ch_names[idx]
+            mtg_idxs = self.ch_indices[idx]
+            # Bipolar montage
+            if len(mtg_name.split('-'))>1:
+                mtg_ch_a = mtg_name.split('-')[0]
+                mtg_ch_b = mtg_name.split('-')[1]
+
+                hw_group_a = ''.join([c for c in mtg_ch_a if not c.isdigit()])
+                hw_group_b = ''.join([c for c in mtg_ch_b if not c.isdigit()])
+
+                accepted_channs = ["c3", "c4", "cz"]
+                if (hw_group_a=="C" or hw_group_b=="C") or (hw_group_a=="DC" or hw_group_b=="DC"):
+                    if (mtg_ch_a.lower() not in accepted_channs and mtg_ch_b.lower() not in accepted_channs):
+                        print(f"Exclude channel {mtg_name}")
+                        continue
+                clean_ch_names.append(mtg_name)
+                clean_ch_indices.append(mtg_idxs)
+            else:
+            # Referential montage
+                hw_group = ''.join([c for c in mtg_name if not c.isdigit()])
+                contact_nr = ''.join([c for c in mtg_name if c.isdigit()])
+                if (hw_group=="C" or hw_group=="DC" or len(contact_nr)==0):
+                    if mtg_name.lower() not in accepted_channs:
+                        print(f"Exclude channel {mtg_name}")
+                        continue
+                clean_ch_names.append(mtg_name)
+                clean_ch_indices.append(mtg_idxs)
+            pass
+        
+        self.ch_names = clean_ch_names
+        self.ch_indices = clean_ch_indices
+
+        pass
     
     def get_referential_data(self, picks:int|list=None, start:int=0, stop:int=None, plot_ok:bool=False)->np.ndarray:
         """
@@ -520,6 +567,7 @@ class EEG_IO:
         Returns:
         non_eeg_labels (list): A list of strings representing the non-EEG channel labels.
         """
-        non_eeg_labels = ["ECG", "EKG", "EOG", "EMG", "EOG"]
+        non_eeg_labels = ["ECG", "EKG", "EKGR", "EKGL", "EOG", "EMG", "EOG", "TRIG", "OSAT", "PLETH", "EVENT"]
+
         return non_eeg_labels
 
