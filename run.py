@@ -13,7 +13,7 @@ from pyeeg_toolbox.persyst.an_avg_wdw_amplitude_vectorized import VectorizedAvgW
 
 from collections import defaultdict
 
-from studies_info import fr_ILAES2025_patients
+from studies_info import fr_ILAES2025_patients, ACH_Pediatric_Patients
 import pyeeg_toolbox.persyst.an_plot_avg_spike_amplitude as spk_plt
 import pyeeg_toolbox.persyst.an_plot_avg_wdw_amplitude as wdw_plt
 
@@ -24,6 +24,7 @@ output_path = Path(os.getcwd()) / "Output"
 os.makedirs(output_path, exist_ok=True)
 
 study_info = fr_ILAES2025_patients()
+study_info = ACH_Pediatric_Patients()
 
 def analyze_spike_wdws_vectorized(study_info, pat_id):
     print(pat_id)
