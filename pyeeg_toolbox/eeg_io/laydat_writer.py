@@ -94,7 +94,7 @@ def write_dat(eeg_data_path:str=None, pat_id:str=None, output_path:str=None):
                     lay.write(f"Last={pat_lastname}\n")
                     lay.write("Sex=\n")
                     lay.write("Hand=\n")
-                    lay.write("BirthDate=1821/09/21\n")
+                    lay.write("BirthDate=1821/09/15\n")
                     lay.write(f"ID={pat_firstname}{pat_lastname}\n")
                     lay.write("MedicalRecordN=\n")
                     lay.write(f"TestDate={startDateTime.strftime("%Y.%m.%d")}\n") 
