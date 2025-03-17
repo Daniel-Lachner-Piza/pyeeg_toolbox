@@ -94,11 +94,11 @@ def ACH_Pediatric_Patients():
     sys_info = get_system_info()
     # Define directories containing the EEG data
     if sys_info['hostname']=="LAPTOP-TFQFNF6U" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux": 
-        study_info.eeg_data_path = Path("F:/Pediatric_Patients_Simultaneous/")
+        study_info.eeg_data_path = Path("F:/Pediatric_Patients_Simultaneous/One_Hour_Converted_Files/")
     elif sys_info['hostname']=="DLP" and sys_info['machine']=="AMD64" and sys_info['system']=="Windows": 
-        study_info.eeg_data_path = Path("F:/Pediatric_Patients_Simultaneous/")
+        study_info.eeg_data_path = Path("F:/Pediatric_Patients_Simultaneous/One_Hour_Converted_Files/")
     elif sys_info['hostname']=="dlp" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux":
-        study_info.eeg_data_path = Path("/media/dlp/Extreme Pro/Pediatric_Patients_Simultaneous/")
+        study_info.eeg_data_path = Path("/media/dlp/Extreme Pro/Pediatric_Patients_Simultaneous/One_Hour_Converted_Files/")
     
     study_info.sleep_data_path = study_info.eeg_data_path
     study_info.ispikes_data_path = study_info.eeg_data_path
@@ -107,9 +107,9 @@ def ACH_Pediatric_Patients():
 
     # Define the names of the folders in the data_path directory that contain the files from each patient. Define also the list of bad channels  
     study_info.patients = {
-        'Constable':[''],
-        'Cucheran':[''],
-        'Wittman':[''],
+        'Pat00001':[''],
+        'Pat00002':[''],
+        'Pat00003':[''],
         }
     
     return study_info

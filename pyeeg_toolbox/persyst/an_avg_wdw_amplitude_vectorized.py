@@ -112,7 +112,7 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         self.pat_files_ls = np.sort(self.pat_files_ls)
 
         rec_start_idx = 0
-        rec_end_idx = 48
+        rec_end_idx = 100#48
         if len(self.pat_files_ls) < rec_end_idx:
             ##rec_start_idx = 0
             rec_end_idx = len(self.pat_files_ls)+1

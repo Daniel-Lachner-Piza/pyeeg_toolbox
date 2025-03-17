@@ -399,10 +399,12 @@ class SpikeAmplitudeAnalyzer:
         dict: A dictionary where keys are sleep stage names and values are the total duration of each sleep stage in seconds.
         """
         sleep_stage_secs_counter_dict = {v:0 for v in self.sleep_stages_map.values()}
+        sleep_stage_secs_counter_dict['NaN'] = 0
         for i in range(len(self.pat_files_ls)):
             this_pat_eeg_file_path = self.pat_files_ls[i]
             pat_sleep_data_path = self.sleep_data_path / this_pat_eeg_file_path.name.replace(self.eeg_file_extension, '_ScalpSleepStages.csv')
             sleep_data_df = pd.read_csv(pat_sleep_data_path, skiprows=7)
+            sleep_stage_secs_counter_dict['NaN'] += sleep_data_df.I1_1.isna().sum()
             for sleep_key in self.sleep_stages_map.keys():
                 sleep_stage_secs_counter_dict[self.sleep_stages_map[sleep_key]] += np.sum(sleep_data_df.I1_1==sleep_key)
 
