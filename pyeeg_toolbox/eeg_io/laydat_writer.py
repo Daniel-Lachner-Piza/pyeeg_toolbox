@@ -24,9 +24,7 @@ def write_dat(eeg_data_path:str=None, pat_id:str=None, output_path:str=None):
         eeg_hdr = mne.io.read_raw_persyst(this_pat_eeg_fpath, verbose=False)
 
         orig_startDateTime = eeg_hdr.info['meas_date']
-        orig_startDateTime.replace(year=1821)
-        orig_startDateTime.replace(month=9)
-        orig_startDateTime.replace(day=15)
+        orig_startDateTime = orig_startDateTime.replace(year=2024, month=9, day=15)
 
         calibration = float(eeg_hdr.info["chs"][0]["cal"]) # number for scaling waveform data
         calibration_persyst = calibration * 1.0e6
@@ -34,6 +32,7 @@ def write_dat(eeg_data_path:str=None, pat_id:str=None, output_path:str=None):
         nr_channs = eeg_hdr._raw_extras[0]['n_chs']
         nr_samples = eeg_hdr._raw_extras[0]['n_samples']
         data_type = eeg_hdr._raw_extras[0]['dtype']
+        first_sample_secs = eeg_hdr._raw_extras[0]['first_sample_secs']
         data_type_str = '7' # 7 is the code for int32
         if data_type != np.int32:
             data_type_str = '0' # 0 is the code for int16
@@ -47,6 +46,7 @@ def write_dat(eeg_data_path:str=None, pat_id:str=None, output_path:str=None):
             hr_nr = int(start_sample/3600/fs)
 
             startDateTime = orig_startDateTime + pd.Timedelta(seconds=start_sample/fs)
+            first_sample_secs += start_sample/fs
 
             # Clipped EEG .dat filename
             new_dat_file_path = output_path / f"{pat_file_id_str}_h{hr_nr:03d}.dat"
@@ -63,7 +63,18 @@ def write_dat(eeg_data_path:str=None, pat_id:str=None, output_path:str=None):
             if not new_lay_file_path.exists():
 
                 # Create .dat file
+                #eeg_hdr = eeg_hdr.resample(sfreq=256)
                 eeg_data = eeg_hdr.get_data(start=start_sample, stop=end_sample)
+
+                # Under-sample the data
+                us_fs = fs
+                # us_fs = int(fs/4)
+                # assert us_fs== 512, f"sampling_rate={us_fs} is not 256 Hz"
+                # us_sel = np.linspace(start=0, stop=eeg_data.shape[1], num=np.round(eeg_data.shape[1]/fs*us_fs).astype(int), dtype=int, endpoint=False)
+                # #signal[np.linspace(start=0, stop=eeg_data.shape[1], num=fs, dtype=int, endpoint=False)]
+                # assert eeg_data.shape[1]/len(us_sel) == 4, f"eeg_data.shape[1]/len(us_sel)={eeg_data.shape[1]/len(us_sel)} is not 4"
+                # eeg_data = eeg_data[:, us_sel]
+
                 data_record = eeg_data.copy().T / calibration
                 data_record = data_record.astype(data_type)
                 data_record.flatten()
@@ -80,7 +91,7 @@ def write_dat(eeg_data_path:str=None, pat_id:str=None, output_path:str=None):
                     lay.write("[FileInfo]\n")
                     lay.write(f"File={Path(new_dat_file_path).name}\n")
                     lay.write("FileType=Interleaved\n")
-                    lay.write(f"SamplingRate={fs}\n")
+                    lay.write(f"SamplingRate={us_fs}\n")
                     lay.write("HeaderLength=0\n")
                     lay.write(f"Calibration={calibration_persyst}\n")
                     lay.write(f"WaveformCount={nr_channs}\n")
@@ -111,7 +122,7 @@ def write_dat(eeg_data_path:str=None, pat_id:str=None, output_path:str=None):
                     lay.write("\n")
 
                     lay.write("[SampleTimes]\n")
-                    lay.write(f"[0={startDateTime.microsecond}\n") #TODO make sure this works with record with fractional seconds
+                    lay.write(f"0={first_sample_secs}\n")
                     lay.write("\n")
                         
                     lay.write("[ChannelMap]\n")
@@ -141,14 +152,15 @@ if __name__ == "__main__":
     
     eeg_data_path = Path("F:/Pediatric_Patients_Simultaneous/")
     patients = {
-    'Constable':['Pat00001'],
-    'Cucheran':['Pat00002'],
-    'Wittman':['Pat00003'],
+    'Cucheran_Clips_2048Hz':2,
+    # 'Constable':1,
+    # 'Cucheran':2,
+    # 'Wittman':3,
     }
 
     all_errors_df = pd.DataFrame()
     for pat_nr, pat_name in enumerate(patients.keys()):
-        pat_id=pat_nr+1
+        pat_id=patients[pat_name]#pat_nr+1
         output_path = Path("F:/Pediatric_Patients_Simultaneous/One_Hour_Converted_Files/") / f"Pat{pat_id:05d}"
         os.makedirs(output_path, exist_ok=True)
         this_pat_eeg_data_path = eeg_data_path / pat_name
