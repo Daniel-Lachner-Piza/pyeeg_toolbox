@@ -152,10 +152,7 @@ if __name__ == "__main__":
     
     eeg_data_path = Path("F:/Pediatric_Patients_Simultaneous/")
     patients = {
-    'Cucheran_Clips_2048Hz':2,
-    # 'Constable':1,
-    # 'Cucheran':2,
-    # 'Wittman':3,
+    'PAT001':2,
     }
 
     all_errors_df = pd.DataFrame()

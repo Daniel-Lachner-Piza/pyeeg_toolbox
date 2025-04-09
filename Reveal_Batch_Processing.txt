@@ -1,8 +1,18 @@
+Pediatric Patients
+	- Open erd file from Natus study
+	- For records with a sampling rate > 300 Hz, downsample them:
+		- Preferences->TrendPreferences->FilterValues: Check Downsample records with sampling arte above 300Hz
+	- Archive the study to convert it to laydat:
+		Tools->Archive->Check export entire record
+
+	- Check that O1 and O2 channels are not labelled as zero instead of the letter O
 
 Scalp Trends
 
 For each patient
+
 	- Delete all files (e.g. scalp trends, scalp spike detections)that are not laydat or csv
+		
 	- Select P15 Trends (F:\Definition_of_Trends)
 
 	- Create new Trend panel with the name:
@@ -10,7 +20,7 @@ For each patient
 	- Add trend Sleep-Wake Stage (pick last one from the list)
 
 	- Process the trends for a short segment of the first laydat record, pause trend processing to save time (after about 10 seconds)
-	- An mmx file will be created in the same folder where the laydat file is. Save the mmx file generated for this first EEG file (F:\Definition_of_Trends)
+	- An mmx file will be created in the same folder where the laydat file is. Save the mmx file generated for this first EEG file (F:\Definition_of_Trends\ScalpTrends)
 	- Clear all processed trends and close Persyst
 	
 	- Reopen the first laydat file

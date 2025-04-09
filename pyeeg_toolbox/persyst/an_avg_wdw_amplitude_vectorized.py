@@ -39,7 +39,7 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                  ispikes_data_path:str=None,
                  ch_coordinates_data_path:str=None,
                  szr_info_data_path:str=None,
-                 sleep_stages_map:Dict[int, str]={0: "Unknown", 1: "N3", 2: "N2", 3:"N1", 4:"REM", 5:"Wake"},
+                 sleep_stages_map:Dict[int, str]={0: "Unknown", 1: "N3", 2: "N2", 3:"N1", 4:"REM", 5:"Wake", 6:"NaN"},
                  output_path:Path=None,
                  )->None:
         """
@@ -112,16 +112,17 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         self.pat_files_ls = np.sort(self.pat_files_ls)
 
         rec_start_idx = 0
-        rec_end_idx = 100#48
+        rec_end_idx = 52#48
         if len(self.pat_files_ls) < rec_end_idx:
             ##rec_start_idx = 0
             rec_end_idx = len(self.pat_files_ls)+1
         self.pat_files_ls = self.pat_files_ls[rec_start_idx:rec_end_idx]
         #self.pat_files_ls = self.pat_files_ls[0:52]
 
+
         sleep_stage_secs_counter_dict = self.get_sleep_stages_duration_sec()
         for k,v in sleep_stage_secs_counter_dict.items():
-            if k != "Unknown":
+            if k not in ["Unknown", "NaN"]:
                 stage_cum_duration_min = np.round(sleep_stage_secs_counter_dict[k]/60, decimals=2)
                 try:
                     assert (stage_cum_duration_min>=2), f"Sleep stage {k} duration is {stage_cum_duration_min}, less than 30 min. for patient {self.pat_id}"
@@ -133,11 +134,29 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         parral_jobs_nr = 4
         Parallel(n_jobs=parral_jobs_nr)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
 
-        self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t, force_recalc=force_recalc)
+        #self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t, force_recalc=force_recalc)
 
-        self.get_overall_ch_stage_spike_amplitude(file_extension=file_extension, mtg_t=mtg_t)
+        #self.get_overall_ch_stage_spike_amplitude(file_extension=file_extension, mtg_t=mtg_t)
 
         return
+
+    def analyze_sleep(self, file_extension):
+        self.get_files_in_folder(file_extension)
+
+        assert len(self.pat_files_ls) > 0, f"No EEG files found in folder {self.ieeg_data_path}"
+        #assert len(self.pat_files_ls) >= 40, f"Duration of EEG data is less than 48 hours for patient {self.pat_id}"
+
+        self.pat_files_ls = np.sort(self.pat_files_ls)
+
+        sleep_stage_secs_counter_dict = self.get_sleep_stages_duration_sec()
+
+        sleep_dict = {'PatID':[self.pat_id]*len(sleep_stage_secs_counter_dict.keys()),  
+                      'Stage':list(sleep_stage_secs_counter_dict.keys()), 
+                      'StageDurationH': [v/3600 for v in sleep_stage_secs_counter_dict.values()]}
+
+        return pd.DataFrame(sleep_dict)
+
+ 
 
     def get_spike_occ_rate_by_sleep_stage(self, file_extension:str='.lay', mtg_t:str='ir', force_recalc:bool=False)->None:
         
@@ -362,22 +381,32 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
             print(this_pat_eeg_fpath.name)
             sleep_stages_ls = list(self.sleep_stages_map.values())
             self.spike_cumulator = AvgWdwCumulator(eeg_channels_ls=eeg_reader.ch_names, sleep_stage_ls=sleep_stages_ls, sig_wdw_dur_s=1, sig_wdw_fs=64)
+            fs = int(eeg_reader.fs)
             fs_us = self.spike_cumulator.get_undersampling_frequency()
 
             spike_wdw_indices, spk_df = self.get_detailed_spike_event(this_pat_eeg_fpath, eeg_reader)
             if spike_wdw_indices is None:
                 self.save_spike_cumulator(filepath=spike_cumulator_fn)
                 return
+            
+            start_indices = spk_df.start_sample.to_numpy()
+            end_indices = spk_df.end_sample.to_numpy()
+
+            assert len(start_indices)==len(end_indices), f"Start and end indices do not match for {this_pat_eeg_fpath.name}"
 
             nr_total_spikes = len(spk_df.center_sample)
-            all_ch_sigs = eeg_reader.get_data()
+            #all_ch_sigs = eeg_reader.get_data()
             for eeg_chi, ch_name in enumerate(eeg_reader.ch_names):
-                ch_spike_wdws = all_ch_sigs[eeg_chi][spike_wdw_indices].reshape(nr_total_spikes, int(eeg_reader.fs))
 
-                # Undersample the EEG segment containing the spikes
-                undersampled_spike_wdws = np.zeros((ch_spike_wdws.shape[0], fs_us))
-                for i, spike_wdw in enumerate(ch_spike_wdws):
-                    undersampled_spike_wdws[i] = self.undersample_signal(spike_wdw, fs_us)
+                # Read the EEG segment containing a spike and undersample it
+                ch_spike_wdws = np.zeros((nr_total_spikes, fs))
+                undersampled_spike_wdws = np.zeros((nr_total_spikes, fs_us))
+                for spike_idx, spike_locs in enumerate(zip(start_indices, end_indices)):
+                    spike_signal = eeg_reader.get_data(picks=eeg_chi, start=spike_locs[0], stop=spike_locs[1]).flatten()
+                    ch_spike_wdws[spike_idx] = spike_signal
+                    undersampled_spike_wdws[spike_idx] = self.undersample_signal(spike_signal, fs_us)
+                    if spike_idx%int(nr_total_spikes/100) == 0:
+                        print(f"{this_pat_eeg_fpath.name}-{ch_name} = {(spike_idx+1)/nr_total_spikes*100:.2f}%")
 
                 plot_ok = False
                 if plot_ok:
