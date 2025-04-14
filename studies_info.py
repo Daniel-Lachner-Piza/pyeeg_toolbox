@@ -106,13 +106,13 @@ def ACH_Pediatric_Patients():
 
     # Define the names of the folders in the data_path directory that contain the files from each patient. Define also the list of bad channels  
     study_info.patients = {
-        'PAT001':[''],
+        #'PAT001':[''],
             # 'PAT002':[''],
             # 'PAT003':[''],
         'PAT004':[''],
         'PAT005':[''],
-        #'PAT006':[''],
-        #'PAT007':[''],
+        'PAT006':[''],
+        'PAT007':[''],
             # 'PAT008':[''],
             # 'PAT009':[''],
             # 'PAT010':[''],

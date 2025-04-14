@@ -11,14 +11,14 @@ from pathlib import Path
 from sklearn.metrics import f1_score, matthews_corrcoef, roc_auc_score
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
-from studies_info import fr_ILAES2025_patients
+from studies_info import fr_ILAES2025_patients, ACH_Pediatric_Patients
 
 plt.style.use('seaborn-v0_8-darkgrid')
 sns.set_style("whitegrid")
 
 characterization_datapath = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Vectorized_WdwAn_Output\\Spike_Characterized_Channels")
 stages_spikes_duration_rate_datapath = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Vectorized_WdwAn_Output\\Stage_Spike_Occurrence_Rate")
-images_output_path = Path(os.getcwd()) / "Images_Output"
+images_output_path = Path(os.getcwd()) / "Images_Output_Pediatric"
 os.makedirs(images_output_path, exist_ok=True)
 
 sleep_stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
@@ -28,6 +28,7 @@ for k,v in STAGES_COLORS.items():
 
 FIGSIZE = (16, 8)
 pats_ls = fr_ILAES2025_patients().patients.keys()
+pats_ls = ACH_Pediatric_Patients().patients.keys()
 #pats_ls = [pn+"_AvgSpikeWdwActivity.csv" for pn in pats_ls]
 nr_pats = len(pats_ls)
 
@@ -249,7 +250,7 @@ def predict_soz_with_spike_occ_rate():
 
     fig, axs = plt.subplots(1, 2, figsize=FIGSIZE)
     box_plot = sns.boxplot(data=prediction_results_df[prediction_results_df.Metric=='AUROC'], x='Stage', y='Value', hue='Stage', palette=STAGES_COLORS, ax=axs[0])
-    axs[0].set_title("Area under the ROC Curve\nNr. Patients={nr_pats}")
+    axs[0].set_title(f"Area under the ROC Curve\nNr. Patients={nr_pats}")
     axs[0].set_ylabel("AUROC")
     medians_df = prediction_results_df[prediction_results_df.Metric=='AUROC'][['Stage', 'Value']].groupby(['Stage']).median().reset_index()
     vertical_offset = prediction_results_df[prediction_results_df.Metric=='AUROC'].Value.median() * 0.05 # offset from median for display

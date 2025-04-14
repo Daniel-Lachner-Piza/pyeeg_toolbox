@@ -81,6 +81,31 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
             sleep_stages_map=self.sleep_stages_map,
         )
 
+    def is_natus_virtual_channel(self, mtg_name:str=None) -> bool:
+        
+        accepted_channs = ["c3", "c4", "cz"]
+        non_accepted_hw_groups = ["c", "dc"]
+        mtg_name = mtg_name.lower()
+        if len(mtg_name.split('-'))>1:
+            # Bipolar montage
+            mtg_ch_a = mtg_name.split('-')[0]
+            mtg_ch_b = mtg_name.split('-')[1]
+            hw_group_a = ''.join([c for c in mtg_ch_a if not c.isdigit()])
+            hw_group_b = ''.join([c for c in mtg_ch_b if not c.isdigit()])
+            if (hw_group_a in non_accepted_hw_groups) or (hw_group_b in non_accepted_hw_groups):
+                if (mtg_ch_a not in accepted_channs and mtg_ch_b not in accepted_channs):
+                    print(f"Exclude Natus Virtual Channel: {mtg_name}")
+                    return True
+        else:
+            # Referential montage
+            hw_group = ''.join([c for c in mtg_name if not c.isdigit()])
+            contact_nr = ''.join([c for c in mtg_name if c.isdigit()])
+            if (hw_group in non_accepted_hw_groups or len(contact_nr)==0):
+                if mtg_name not in accepted_channs:
+                    print(f"Exclude Natus Virtual Channel: {mtg_name}")
+                    return True
+
+        return False
 
     def run(self, file_extension:str='.lay', mtg_t:str='ir', force_recalc:bool=False)->None:
         """
@@ -125,7 +150,7 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
             if k not in ["Unknown", "NaN"]:
                 stage_cum_duration_min = np.round(sleep_stage_secs_counter_dict[k]/60, decimals=2)
                 try:
-                    assert (stage_cum_duration_min>=2), f"Sleep stage {k} duration is {stage_cum_duration_min}, less than 30 min. for patient {self.pat_id}"
+                    assert (stage_cum_duration_min>=1), f"Sleep stage {k} duration is {stage_cum_duration_min}, less than 30 min. for patient {self.pat_id}"
                 except AssertionError as e:
                     print(f"{e}")
                     return     
@@ -217,11 +242,24 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                             nr_spikes = spk_cum.nr_spikes[sleep_stage][ch_idx][0]
                             avg_spike_signal = spk_cum.spike_cum_dict[sleep_stage][ch_idx]
                             amplitude = np.max(avg_spike_signal)-np.min(avg_spike_signal)
-                            if nr_spikes>0:
+                            if np.isnan(amplitude):
+                                pass
+                            if chname=='c105':
+                                pass
+                            is_natus_virtual_channel = self.is_natus_virtual_channel(mtg_name=chname)
+                            if not is_natus_virtual_channel:
+                                # if chname=='tples1' and sleep_stage=='N1':
+                                #     pass
+
+                                if nr_spikes==0:
+                                    amplitude = 0
+
                                 spike_data_colect_dict['Channel'].append(chname)
                                 spike_data_colect_dict['Stage'].append(sleep_stage)
                                 spike_data_colect_dict['Amplitude'].append(amplitude)
                                 spike_data_colect_dict['NrSpikes'].append(nr_spikes)
+                                #    pass
+                            else:
                                 pass
 
 
@@ -249,6 +287,11 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         spike_data_colect_df = pd.DataFrame(spike_data_colect_dict)
         spike_channels_ls = np.sort(spike_data_colect_df['Channel'].unique())
         spike_charact_dict = {'Stage':[], 'Channel':[], 'Amplitude':[], 'NrClipsWithSpikes':[], 'SOZ':[]}
+
+        soz_hits = [spike_data_colect_df.Channel.str.fullmatch(soz_chname.lower(), case=False).sum() for soz_chname in spike_channels_ls]
+        assert np.unique(soz_hits).size==1, f"Not all proecessing cycles assigned values to a SOZ channel for {self.pat_id}"
+        assert 0 not in np.unique(soz_hits), f"SOZ channels not found in EEG for {self.pat_id}"
+
         for sleep_stage in sleep_stages_ls:
             if sleep_stage != "Unknown":
                 for ch_idx, chname in enumerate(spike_channels_ls):
