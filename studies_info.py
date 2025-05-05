@@ -87,6 +87,49 @@ def fr_ILAES2025_patients():
     
     return study_info
 
+def ACH_ILAES2025_patients():
+    study_info = EEG_Study_Info()
+    study_info.dataset_name = "Freiburg_Ten"
+    sys_info = get_system_info()
+    # Define directories containing the EEG data
+    if sys_info['hostname']=="LAPTOP-TFQFNF6U" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux": 
+        study_info.eeg_data_path = Path("F:/FREIBURG_Simultaneous_OneHrFiles/")
+    elif sys_info['hostname']=="DLP" and sys_info['machine']=="AMD64" and sys_info['system']=="Windows": 
+        study_info.eeg_data_path = Path("F:/FREIBURG_Simultaneous_OneHrFiles/")
+    elif sys_info['hostname']=="dlp" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux":
+        study_info.eeg_data_path = Path("/media/dlp/Extreme Pro/FREIBURG_Simultaneous_OneHrFiles/")
+    
+    study_info.sleep_data_path = study_info.eeg_data_path
+    study_info.ispikes_data_path = study_info.eeg_data_path
+    study_info.channel_coordinates_data_path = study_info.eeg_data_path / "iEEG_Electrode_Coordinates"
+    study_info.seizure_info_data_path = study_info.eeg_data_path / "iEEG_Seizure_Info"
+
+    # Define the names of the folders in the data_path directory that contain the files from each patient. Define also the list of bad channels  
+    study_info.patients = {
+        #'pat_FR_139':[''], # N1 duration is 0 within 48 hours
+        'pat_FR_253':['HRC5', 'HP1', 'HP2', 'HP3'],
+        'pat_FR_264':[''], # SOZ channels are renamed
+        'pat_FR_273':[''], # SOZ channels are renamed
+        'pat_FR_384':[''],
+        'pat_FR_375':[''],
+        'pat_FR_442':[''],
+        'pat_FR_548':[''],
+        'pat_FR_565':[''],
+        'pat_FR_583':[''],
+        'pat_FR_590':[''],
+        'pat_FR_862':[''],
+        'pat_FR_916':[''],
+        # 'pat_FR_922':[''], #duration of 24 hours only
+        #'pat_FR_958':[''], # N1 duration is 0 within 48 hours
+        'pat_FR_970':['GC1'], 
+        'pat_FR_1073':[''],
+        'pat_FR_1084':['M1', 'M2'], 
+        'pat_FR_1096':['LDH1'],
+        'pat_FR_1125':[''],
+        }
+    
+    return study_info
+
 def ACH_Pediatric_Patients():
     study_info = EEG_Study_Info()
     study_info.dataset_name = "ACH_Pediatric_Patients"
@@ -106,19 +149,46 @@ def ACH_Pediatric_Patients():
 
     # Define the names of the folders in the data_path directory that contain the files from each patient. Define also the list of bad channels  
     study_info.patients = {
-        #'PAT001':[''],
+        'PAT001':[''],
             # 'PAT002':[''],
-            # 'PAT003':[''],
+        'PAT003':[''],
         'PAT004':[''],
         'PAT005':[''],
         'PAT006':[''],
         'PAT007':[''],
             # 'PAT008':[''],
-            # 'PAT009':[''],
-            # 'PAT010':[''],
-            # 'PAT011':[''],
-            # 'PAT012':[''],
-            # 'PAT013':[''],
+        'PAT009':[''],
+        'PAT010':[''],
+        'PAT011':[''],
+        'PAT012':[''],
+        }
+    
+    return study_info
+
+def ACH_Pediatric_Patients_Spike_Drive():
+    study_info = EEG_Study_Info()
+    study_info.dataset_name = "ACH_Pediatric_Patients"
+    sys_info = get_system_info()
+    # Define directories containing the EEG data
+    if sys_info['hostname']=="LAPTOP-TFQFNF6U" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux": 
+        study_info.eeg_data_path = Path("I:/")
+    elif sys_info['hostname']=="DLP" and sys_info['machine']=="AMD64" and sys_info['system']=="Windows": 
+        study_info.eeg_data_path = Path("H:/SimultEEG_PediatricPatients")
+    elif sys_info['hostname']=="dlp" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux":
+        study_info.eeg_data_path = Path("/media/dlp/I/")
+    
+    study_info.sleep_data_path = study_info.eeg_data_path
+    study_info.ispikes_data_path = study_info.eeg_data_path
+    study_info.channel_coordinates_data_path = study_info.eeg_data_path / "iEEG_Electrode_Coordinates"
+    study_info.seizure_info_data_path = study_info.eeg_data_path / "iEEG_Seizure_Info"
+
+    # Define the names of the folders in the data_path directory that contain the files from each patient. Define also the list of bad channels  
+    study_info.patients = {
+        'PAT003':[''],
+        'PAT009':[''],
+        'PAT010':[''],
+        'PAT011':[''],
+        'PAT012':[''],
         }
     
     return study_info

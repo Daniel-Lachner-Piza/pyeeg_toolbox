@@ -144,19 +144,19 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         self.pat_files_ls = self.pat_files_ls[rec_start_idx:rec_end_idx]
         #self.pat_files_ls = self.pat_files_ls[0:52]
 
-
+        
         sleep_stage_secs_counter_dict = self.get_sleep_stages_duration_sec()
         for k,v in sleep_stage_secs_counter_dict.items():
             if k not in ["Unknown", "NaN"]:
                 stage_cum_duration_min = np.round(sleep_stage_secs_counter_dict[k]/60, decimals=2)
                 try:
-                    assert (stage_cum_duration_min>=1), f"Sleep stage {k} duration is {stage_cum_duration_min}, less than 30 min. for patient {self.pat_id}"
+                    assert (stage_cum_duration_min>=0.05), f"Sleep stage {k} duration is {stage_cum_duration_min}, less than 30 min. for patient {self.pat_id}"
                 except AssertionError as e:
                     print(f"{e}")
                     return     
-        
+
         ni_th = 1
-        parral_jobs_nr = 3
+        parral_jobs_nr = 20
         Parallel(n_jobs=parral_jobs_nr)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
 
         self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t, force_recalc=force_recalc)
@@ -433,6 +433,10 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
             fs_us = self.spike_cumulator.get_undersampling_frequency()
 
             spike_wdw_indices, spk_df = self.get_detailed_spike_event(this_pat_eeg_fpath, eeg_reader)
+            if spk_df is None:
+                self.save_spike_cumulator(filepath=spike_cumulator_fn)
+                return
+            
             start_indices = spk_df.start_sample.to_numpy()
             end_indices = spk_df.end_sample.to_numpy()
             nr_total_spikes = len(spk_df.center_sample)
@@ -450,9 +454,12 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                     # Read the EEG segment containing a spike and undersample it
                     undersampled_spike_wdws[eeg_chi, spike_idx] = self.undersample_signal(all_channs_spike_signal[eeg_chi], fs_us)
                     pass
-
-                if spike_idx%int(nr_total_spikes/100) == 0:
-                    print(f"{this_pat_eeg_fpath.name} = {(spike_idx+1)/nr_total_spikes*100:.2f}%")
+                
+                try:
+                    if spike_idx%int(nr_total_spikes/100) == 0:
+                        print(f"{this_pat_eeg_fpath.name} = {(spike_idx+1)/nr_total_spikes*100:.2f}%")
+                except ZeroDivisionError:
+                    pass
                     
             for eeg_chi, ch_name in enumerate(eeg_reader.ch_names):
                 for k, stage_name in self.sleep_stages_map.items():
@@ -467,6 +474,8 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                 pass
             
             self.save_spike_cumulator(filepath=spike_cumulator_fn)
+        else:
+            print(f"Spike cumulator file {spike_cumulator_fn} already exists. Skipping calculation.")
         pass
 
     def get_unique_channels_from_eegs(self, eeg_files_ls):
@@ -662,6 +671,8 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         pass
 
         soz_chann_ls = list(set(ch_szr_involvment_dict['Origin']))
+        # soz_chann_ls.extend(list(set(ch_szr_involvment_dict['Early'])))
+        # soz_chann_ls = list(set(soz_chann_ls))
         soz_chann_ls = [c.lower() for c in soz_chann_ls]
         assert len(soz_chann_ls)>0, "No SOZ channels found in the seizure info file"
 

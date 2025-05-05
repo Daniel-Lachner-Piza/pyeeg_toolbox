@@ -13,18 +13,11 @@ from pyeeg_toolbox.persyst.an_avg_wdw_amplitude_vectorized import VectorizedAvgW
 
 from collections import defaultdict
 
-from studies_info import fr_ILAES2025_patients, ACH_Pediatric_Patients
+from studies_info import fr_ILAES2025_patients, ACH_Pediatric_Patients, ACH_Pediatric_Patients_Spike_Drive
 import pyeeg_toolbox.persyst.an_plot_avg_spike_amplitude as spk_plt
 import pyeeg_toolbox.persyst.an_plot_avg_wdw_amplitude as wdw_plt
 
 FORCE_RECALC = False
-
-# Define directory to save the cumulated spike signals
-output_path = Path(os.getcwd()) / "Output"
-os.makedirs(output_path, exist_ok=True)
-
-study_info = fr_ILAES2025_patients()
-study_info = ACH_Pediatric_Patients()
 
 def analyze_spike_wdws_vectorized(study_info, pat_id):
     print(pat_id)
@@ -45,21 +38,35 @@ def analyze_sleep_stages(study_info):
         all_pats_sleep_stages_df = pd.concat([all_pats_sleep_stages_df, pat_sleep_df], ignore_index=True)
         pass
 
-    sns.set(style="whitegrid")
-    ax= sns.barplot(all_pats_sleep_stages_df, x='PatID', y='StageDurationH', hue='Stage')
-    for container in ax.containers:
-        ax.bar_label(container, fontsize=10, rotation=90, label_type='edge', padding=3, color='black', fmt='%.2f')
-    plt.title('Sleep Stages Duration by Patient')
-    plt.show()
-    plt.waitforbuttonpress()
-    all_pats_sleep_stages_df.to_csv(output_path / "ALL_Patients_Sleep_Stages.csv", index=False)
+    # sns.set(style="whitegrid")
+    # ax= sns.barplot(all_pats_sleep_stages_df, x='PatID', y='StageDurationH', hue='Stage')
+    # for container in ax.containers:
+    #     ax.bar_label(container, fontsize=10, rotation=90, label_type='edge', padding=3, color='black', fmt='%.2f')
+    # plt.title('Sleep Stages Duration by Patient')
+    # plt.show()
+    # #plt.waitforbuttonpress()
+    # all_pats_sleep_stages_df.to_csv(output_path / "ALL_Patients_Sleep_Stages.csv", index=False)
 
-output_path = Path(os.getcwd()) / "Vectorized_WdwAn_Output"
-os.makedirs(output_path, exist_ok=True)
-
-
-#analyze_sleep_stages(study_info)
-results = Parallel(n_jobs=1)(delayed(analyze_spike_wdws_vectorized)(study_info, pat_id) for pat_id in study_info.patients.keys())
+    return all_pats_sleep_stages_df
 
 
-pass
+
+if __name__ == "__main__":
+
+    # Define directory to save the cumulated spike signals
+    output_path = Path(os.getcwd()) / "Output"
+    os.makedirs(output_path, exist_ok=True)
+
+    study_info = fr_ILAES2025_patients()
+    # study_info = ACH_Pediatric_Patients()
+    # study_info = ACH_Pediatric_Patients_Spike_Drive()
+
+    output_path = Path(os.getcwd()) / "Vectorized_WdwAn_Output"
+    os.makedirs(output_path, exist_ok=True)
+
+
+    #sleep_a_df = analyze_sleep_stages(study_info)
+    results = Parallel(n_jobs=1)(delayed(analyze_spike_wdws_vectorized)(study_info, pat_id) for pat_id in study_info.patients.keys())
+
+
+    pass
