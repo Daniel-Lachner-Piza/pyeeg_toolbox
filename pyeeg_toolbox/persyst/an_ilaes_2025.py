@@ -359,33 +359,53 @@ class Spike_Activity_Analyzer:
         #plt.waitforbuttonpress()
         plt.close()
 
+        return prediction_results_df
+
 if __name__ == "__main__":
 
-    study = ACH_Pediatric_Patients() # ACH_Pediatric_Patients, fr_ILAES2025_patients
-    if 'freiburg' in str(study.eeg_data_path).lower():
-        images_output_path = Path(os.getcwd()) / "Images_Output"
-    else:
-        images_output_path = Path(os.getcwd()) / "Images_Output_Pediatric"
-    os.makedirs(images_output_path, exist_ok=True)
+    studies_ls =  [ACH_Pediatric_Patients(), fr_ILAES2025_patients()] # ACH_Pediatric_Patients, fr_ILAES2025_patients
+    prediction_results_ls = []
+    for study in studies_ls:
+        print(f"Study: {study.dataset_name}")
+        if 'freiburg' in str(study.eeg_data_path).lower():
+            images_output_path = Path(os.getcwd()) / "Images_Output"
+        else:
+            images_output_path = Path(os.getcwd()) / "Images_Output_Pediatric"
+        os.makedirs(images_output_path, exist_ok=True)
 
-    pats_ls = list(study.patients.keys())
+        pats_ls = list(study.patients.keys())
 
-    characterization_datapath = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Vectorized_WdwAn_Output\\Spike_Characterized_Channels")
-    stages_spikes_duration_rate_datapath = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Vectorized_WdwAn_Output\\Stage_Spike_Occurrence_Rate")
+        characterization_datapath = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Vectorized_WdwAn_Output\\Spike_Characterized_Channels")
+        stages_spikes_duration_rate_datapath = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Vectorized_WdwAn_Output\\Stage_Spike_Occurrence_Rate")
 
-    sleep_stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
-    stages_colors = {'N1':(250,223,99), 'N2':(41,232,178), 'N3':(76,169,238), 'REM':(47,69,113), 'Wake':(224,115,120), 'Unknown':(128,128,128)}
-    for k,v in stages_colors.items():
-        stages_colors[k] = (v[0]/255, v[1]/255, v[2]/255)
+        sleep_stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
+        stages_colors = {'N1':(250,223,99), 'N2':(41,232,178), 'N3':(76,169,238), 'REM':(47,69,113), 'Wake':(224,115,120), 'Unknown':(128,128,128)}
+        for k,v in stages_colors.items():
+            stages_colors[k] = (v[0]/255, v[1]/255, v[2]/255)
 
-    spike_analyzer = Spike_Activity_Analyzer(characterization_datapath, stages_spikes_duration_rate_datapath, pats_ls, sleep_stages_ls, stages_colors, images_output_path)
+        spike_analyzer = Spike_Activity_Analyzer(characterization_datapath, stages_spikes_duration_rate_datapath, pats_ls, sleep_stages_ls, stages_colors, images_output_path)
 
-    spike_data_df = spike_analyzer.read_patient_spike_data()
-    spike_data_df = spike_analyzer.handle_patient_outliers(spike_data_df)
-    spike_data_df = spike_analyzer.get_patient_scaled_spike_data(spike_data_df)
+        spike_data_df = spike_analyzer.read_patient_spike_data()
+        spike_data_df = spike_analyzer.handle_patient_outliers(spike_data_df)
+        spike_data_df = spike_analyzer.get_patient_scaled_spike_data(spike_data_df)
 
-    spike_analyzer.hypothesis_test_soz_vs_nonsoz(spike_data_df)
-    spike_analyzer.predict_soz_with_spike_occ_rate(spike_data_df)
+        spike_analyzer.hypothesis_test_soz_vs_nonsoz(spike_data_df)
+        prediction_results_df = spike_analyzer.predict_soz_with_spike_occ_rate(spike_data_df)
 
-    #spike_analyzer.plot_spike_occ_rate(spike_data_df)
-    #plot_sleep_stage_durations(pats_ls, images_output_path)
+        prediction_results_ls.append(prediction_results_df)
+
+    for i, study in enumerate(studies_ls):
+        print(f"\n\nStudy: {study.dataset_name}")
+        prediction_results_df = prediction_results_ls[i]      
+        print('Median AUROC')
+        print(prediction_results_df[prediction_results_df.Metric=='AUROC'][['Stage', 'Value']].groupby(['Stage']).median())
+        # print('Std_AUROC')
+        # print(prediction_results_df[prediction_results_df.Metric=='AUROC'][['Stage', 'Value']].groupby(['Stage']).std())
+
+        # print('Median MCC')
+        # print(prediction_results_df[prediction_results_df.Metric=='MCC'][['Stage', 'Value']].groupby(['Stage']).median())
+        # print('Std_MCC')
+        # print(prediction_results_df[prediction_results_df.Metric=='MCC'][['Stage', 'Value']].groupby(['Stage']).std())
+
+        #spike_analyzer.plot_spike_occ_rate(spike_data_df)
+        #plot_sleep_stage_durations(pats_ls, images_output_path)

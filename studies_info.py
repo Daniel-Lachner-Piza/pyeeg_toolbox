@@ -46,7 +46,7 @@ def fr_four_patients():
     
 def fr_ILAES2025_patients():
     study_info = EEG_Study_Info()
-    study_info.dataset_name = "Freiburg_Ten"
+    study_info.dataset_name = "Freiburg_Epilepsiae_Simultaneous_17"
     sys_info = get_system_info()
     # Define directories containing the EEG data
     if sys_info['hostname']=="LAPTOP-TFQFNF6U" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux": 
@@ -89,7 +89,7 @@ def fr_ILAES2025_patients():
 
 def ACH_ILAES2025_patients():
     study_info = EEG_Study_Info()
-    study_info.dataset_name = "Freiburg_Ten"
+    study_info.dataset_name = "ACH_ILAES2025_patients"
     sys_info = get_system_info()
     # Define directories containing the EEG data
     if sys_info['hostname']=="LAPTOP-TFQFNF6U" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux": 
