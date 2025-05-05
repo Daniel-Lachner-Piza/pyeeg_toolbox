@@ -69,65 +69,44 @@ class Spike_Activity_Analyzer:
     def handle_patient_outliers(self, spike_data_df:pd.DataFrame=None):
 
         # Remove outliers from the data
-        spike_data_df.loc[:, 'Amplitude'] = np.log(spike_data_df.Amplitude.values+1) # log transform to reduce skewness, add 1 to avoid log(0)
+        raise_min = np.abs(spike_data_df.Amplitude.min())+0.1 # add 1 to avoid log(0)
+        spike_data_df.loc[:, 'Amplitude'] = np.log(spike_data_df.Amplitude.values+raise_min) # log transform to reduce skewness, add 1 to avoid log(0)
 
         pats_ls = spike_data_df.Patient.unique()
         clean_spike_data_df = pd.DataFrame()
         for pdata_fn in pats_ls:
             pdata_df = spike_data_df[spike_data_df.Patient.str.fullmatch(pdata_fn, case=False)].reset_index(drop=True).copy()
 
-            pdata_df.Amplitude = StandardScaler().fit_transform(pdata_df.Amplitude.values.reshape(-1, 1)) # MinMaxScaler, StandardScaler()
-
             assert pdata_df.isna().sum().sum() == 0, f"NaN values in {pdata_fn}"
             assert pdata_df.isnull().sum().sum() == 0, f"Null values in {pdata_fn}"
 
-            q75, q25 = np.percentile(pdata_df.Amplitude.values, [75 ,25])
-            iqr = q75 - q25
-            low_th = q25 - 3*iqr
-            high_th = q75 + 3*iqr
-            outliers_thresh = high_th
-            # outliers_sel = pdata_df.Amplitude > high_th
+            # Remove outliers from the data using IQR method
+            prctl_25 = np.percentile(pdata_df.Amplitude, 25.0)
+            prctl_75 = np.percentile(pdata_df.Amplitude, 75.0)
+            iqr = prctl_75 - prctl_25
+            outliers_thresh_a = prctl_75 + 3 * iqr # 1.5 * IQR rule for outliers
 
-            # non_outliers_mean = pdata_df.Amplitude[np.logical_not((pdata_df.Amplitude > high_th)) & np.logical_not((pdata_df.Amplitude < low_th))].mean()
-            # pdata_df.loc[pdata_df.Amplitude > high_th, 'Amplitude'] = non_outliers_mean
-            # pdata_df.loc[pdata_df.Amplitude < low_th, 'Amplitude'] = non_outliers_mean
+            # Remove outliers from the data using z-score method
+            z_outliers_thresh = 3 # 3.0 * pdata_df.Amplitude.std()
+            outliers_thresh_b = pdata_df.Amplitude.mean() + z_outliers_thresh * pdata_df.Amplitude.std()
+            
+            # Remove outliers from the data using percentile method
+            outliers_thresh_c = np.percentile(pdata_df.Amplitude, 99.0)# 2.5 * pdata_df.Amplitude.std()
 
-            # B
-            outliers_thresh = np.percentile(pdata_df.Amplitude, 99.0)# 2.5 * pdata_df.Amplitude.std()
-            #outliers_thresh = pdata_df.Amplitude.mean() + 5*pdata_df.Amplitude.std()
-            outliers_sel = pdata_df.Amplitude > outliers_thresh
-            #non_outliers_mean = pdata_df.Amplitude[~outliers_sel].mean()
+            outliers_thresh = outliers_thresh_c
+            # outliers_thresh = np.min([outliers_thresh_a, outliers_thresh_b, outliers_thresh_c])
+            # outliers_thresh = np.max([outliers_thresh_a, outliers_thresh_b, outliers_thresh_c])
+            # outliers_thresh = np.mean([outliers_thresh_a, outliers_thresh_b, outliers_thresh_c])
+
+            outliers_sel = (pdata_df.Amplitude > outliers_thresh).to_numpy()
             pdata_df.loc[outliers_sel, 'Amplitude'] = outliers_thresh
-
-
-            # Remove outlierchannels
-            # median_val = pdata_df.Amplitude.mode()
-
-            #outliers_thresh = 5 * pdata_df.Amplitude.std()
-            # sel_outliers_neg = pdata_df.Amplitude < low_th
-            # sel_outliers_pos = pdata_df.Amplitude > high_th
-
-            # low_th = pdata_df.Amplitude.mean() - 3 * pdata_df.Amplitude.std()
-            # high_th = pdata_df.Amplitude.mean() + 3 * pdata_df.Amplitude.std()
-            # sel_outliers_neg = pdata_df.Amplitude < low_th
-            # sel_outliers_pos = pdata_df.Amplitude > high_th
-
-            #sel_outliers = pdata_df.Amplitude < low_th
-            #sel_outliers = np.abs(pdata_df.Amplitude) > pdata_df.Amplitude.mean() + 3 * pdata_df.Amplitude.std()
-            #sel_outliers = pdata_df.Amplitude > pdata_df.Amplitude.mean() + 3 * pdata_df.Amplitude.std()
-            #sel_outliers = np.abs(pdata_df.Amplitude) > pdata_df.Amplitude.mean() + 2 * pdata_df.Amplitude.std()
-            #sel_outliers = np.abs(pdata_df.Amplitude) > high_th
-
-            #pdata_df = pdata_df[~sel_outliers_pos & ~sel_outliers_neg]
-            # pdata_df.loc[sel_outliers_neg, 'Amplitude'] = median_val
-            # pdata_df.loc[sel_outliers_pos, 'Amplitude'] = median_val
 
             # sns.histplot(data=pdata_df, x='Amplitude', bins=100, kde=True, color='blue')
             # sns.histplot(data=pdata_df.Amplitude.values, stat='probability',alpha=0.5, label=pdata_fn)
             # plt.title(f"Patient {pdata_fn} - Spike Amplitude Distribution")
             # plt.xlabel("Amplitude (uV)")
             # plt.show()
-            # plt.waitforbuttonpress()
+            # #plt.waitforbuttonpress()
             # plt.close()
 
             clean_spike_data_df = pd.concat([clean_spike_data_df, pdata_df.copy()])
@@ -308,14 +287,8 @@ class Spike_Activity_Analyzer:
                 assert np.unique(y_test).shape[0] > 1, "Test set has only one class"
 
                 # Basic feature engineering
-                # X_train = X_train**2
-                # X_test = X_test**2
-                # X_train = np.hstack([X_train, X_train**2])
-                # X_test = np.hstack([X_test, X_test**2])
                 X_train = np.hstack([X_train, X_train**2, X_train**3])
                 X_test = np.hstack([X_test, X_test**2, X_test**3])
-                # X_train = np.hstack([X_train, X_train**2, X_train**3, X_train**4])
-                # X_test = np.hstack([X_test, X_test**2, X_test**3, X_test**4])
 
                 model = LogisticRegression(penalty='l2', class_weight='balanced', solver='liblinear', max_iter=10000, tol=0.01)
 
