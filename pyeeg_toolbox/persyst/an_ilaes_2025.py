@@ -34,7 +34,7 @@ class Spike_Activity_Analyzer:
 
     def read_patient_spike_data(self):
         nr_pats = len(self.pats_ls)
-        # Concatenate data from all patients, scale amplitude for each patient
+        # Concatenate data from all patients
         spike_data_df = pd.DataFrame()
         for pdata_fn in self.pats_ls:
             data_fpath = self.characterization_datapath / f"{pdata_fn}_AvgSpikeWdwActivity.csv"
@@ -65,6 +65,24 @@ class Spike_Activity_Analyzer:
         spike_data_df.reset_index(drop=True, inplace=True)
 
         return spike_data_df
+
+    def read_stages_duration_and_spike_rates(self):
+        # Concatenate data from all patients
+        nr_pats = len(self.pats_ls)
+        
+        spike_occ_rate_pats_ls = [pn + "_StageSpikeOccurrenceRate.csv" for pn in self.pats_ls]
+        stage_duration_spike_rate_df = pd.DataFrame()
+        for pdata_fn in spike_occ_rate_pats_ls:
+            data_fpath = stages_spikes_duration_rate_datapath / pdata_fn
+            #print(data_fpath)
+            try:
+                pdata_df = pd.read_csv(data_fpath)
+                stage_duration_spike_rate_df = pd.concat([stage_duration_spike_rate_df, pdata_df])
+            except:
+                print(f"File {pdata_fn} not found")
+
+        stage_duration_spike_rate_df.reset_index(drop=True, inplace=True)
+        return stage_duration_spike_rate_df
 
     def handle_patient_outliers(self, spike_data_df:pd.DataFrame=None):
 
@@ -127,87 +145,6 @@ class Spike_Activity_Analyzer:
         return scaled_spike_data_df
 
 
-    def plot_sleep_stage_durations(pats_ls:list[str]=None, images_output_path:str=None):
-        nr_pats = len(pats_ls)
-        spike_occ_rate_pats_ls = [pn + "_StageSpikeOccurrenceRate.csv" for pn in pats_ls]
-        stage_spike_data = pd.DataFrame()
-        for pdata_fn in spike_occ_rate_pats_ls:
-            data_fpath = stages_spikes_duration_rate_datapath / pdata_fn
-            #print(data_fpath)
-            try:
-                pdata_df = pd.read_csv(data_fpath)
-                stage_spike_data = pd.concat([stage_spike_data, pdata_df])
-            except:
-                print(f"File {pdata_fn} not found")
-
-        #sleep_ref_img_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\pyeeg_toolbox\\persyst\\SleepStages_Reference.png")
-        sleep_ref_img_path = os.getcwd()+'/pyeeg_toolbox/persyst/SleepStages_Reference.png'
-        sleep_ref_img= Image.open(sleep_ref_img_path)
-        rsz_ratio = 2
-        img_rsz = (int(sleep_ref_img.size[0]/rsz_ratio), int(sleep_ref_img.size[1]/rsz_ratio))
-        sleep_ref_img = sleep_ref_img.resize(img_rsz)
-
-        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
-        
-        to_plot_stage_names = ['N3', 'N2', 'N1', 'REM']
-        sum_stages_dur_mins = []
-        for stage_name in to_plot_stage_names:
-            stage_sel = stage_spike_data.Stage==stage_name
-            assert stage_sel.sum() == nr_pats, "More than one entry per patient"
-            sum_stages_dur_mins.append(stage_spike_data.StageDurM[stage_sel].sum())
-            pass
-
-        to_plot_stages_colors = [self.stages_colors[k] for k in to_plot_stage_names]
-
-        sum_stages_dur_perc = (np.array(sum_stages_dur_mins)/np.sum(sum_stages_dur_mins))*100
-        wedgeprops = {"edgecolor" : "white", 'linewidth': 5, 'antialiased': True}
-        
-        patches, texts, pcts = axs.pie(x=sum_stages_dur_perc, labels=to_plot_stage_names, colors=to_plot_stages_colors, wedgeprops=wedgeprops, autopct='%.0f%%', textprops={'fontsize':24, 'color':"w", 'weight':'bold'}, startangle=-200)
-        for i, patch in enumerate(patches):
-            texts[i].set_color(patch.get_facecolor())
-        axs.set_ylabel("Relative Duration of Sleep Stages (%)", fontsize=24)
-        axs.set_title(f"Proportion of summed duration of Sleep Stages\nNr.Patients = {nr_pats}", fontsize=24, color='black')
-        pass
-        #plt.legend(loc='lower right', fontsize=24)
-
-        # Overlay image on plot
-        im_width, im_height = sleep_ref_img.size
-        bbox = fig.get_window_extent() 
-        fig.figimage(sleep_ref_img, xo=int(bbox.x1-im_width/2), yo=int(bbox.y1-im_height/2), zorder=3, alpha=.7, origin='upper')
-
-        plt.get_current_fig_manager().full_screen_toggle()
-        plt.tight_layout()
-        plt.savefig(images_output_path / "Duration_Of_Sleep_Stages.png")
-        #plt.waitforbuttonpress()
-        plt.close()
-
-
-    def plot_spike_occ_rate(self, spike_data_df:pd.DataFrame=None):
-        nr_pats = len(pats_ls)
-        spike_occ_rate_pats_ls = [pn + "_StageSpikeOccurrenceRate.csv" for pn in pats_ls]
-        stage_spike_data = pd.DataFrame()
-        for pdata_fn in spike_occ_rate_pats_ls:
-            data_fpath = stages_spikes_duration_rate_datapath / pdata_fn
-            #print(data_fpath)
-            try:
-                pdata_df = pd.read_csv(data_fpath)
-                stage_spike_data = pd.concat([stage_spike_data, pdata_df])
-            except:
-                print(f"File {pdata_fn} not found")
-
-        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
-        assert nr_pats == len(stage_spike_data.PatID.unique()), "More than one entry per patient"
-        sns.violinplot(data=stage_spike_data, x='Stage', y='SpikeOccRate', hue='Stage', palette=self.stages_colors, ax=axs)
-        axs.set_ylabel("Spikes Activity (uV)", fontsize=24)
-        axs.set_title(f"Average Spike Activity\nNr.Patients = {nr_pats}", fontsize=24)
-
-        plt.get_current_fig_manager().full_screen_toggle()
-        plt.tight_layout()
-        plt.savefig(images_output_path / "Average_Spike_Activity.png")
-        #plt.waitforbuttonpress()
-        plt.close()
-
-
     def hypothesis_test_soz_vs_nonsoz(self, spike_data_df:pd.DataFrame=None):
 
         nr_pats = len(spike_data_df.Patient.unique())
@@ -240,7 +177,7 @@ class Spike_Activity_Analyzer:
         plt.get_current_fig_manager().full_screen_toggle()
         plt.suptitle(f"Spike Activity in SOZ vs. Non-SOZ\nNr. Patients={nr_pats}")
         plt.tight_layout()
-        plt.savefig(images_output_path / "Spike_Activity_SOZ_vs_NonSOZ_Hypothesis_Tests.png")
+        plt.savefig(self.images_output_path / "Spike_Activity_SOZ_vs_NonSOZ_Hypothesis_Tests.png")
         #plt.waitforbuttonpress()
         plt.close()
 
@@ -355,23 +292,105 @@ class Spike_Activity_Analyzer:
         plt.get_current_fig_manager().full_screen_toggle()
         plt.suptitle(f"Prediction of SOZ\nNr. Patients={nr_pats}")
         plt.tight_layout()
-        plt.savefig(images_output_path / "SOZ_Prediction.png")
+        plt.savefig(self.images_output_path / "SOZ_Prediction.png")
         #plt.waitforbuttonpress()
         plt.close()
 
         return prediction_results_df
 
+
+    def plot_per_stage_spike_activity(self, spike_data_df:pd.DataFrame=None):
+        
+        spike_data_df_plot = spike_data_df.copy() 
+        spike_data_df_plot.loc[:, 'Amplitude'] = spike_data_df_plot.Amplitude.values*1000*1000 # convert to uV
+        nr_pats = len(spike_data_df.Patient.unique())
+
+        box_plot = sns.boxplot(data=spike_data_df_plot, x='Stage', y='Amplitude', hue='Stage', palette=self.stages_colors, showfliers=False)
+        plt.ylabel("Spike Activity (uV)", fontsize=16)
+        plt.xlabel("Sleep Stage", fontsize=16)
+        plt.title(f"Spike Activity per Sleep Stage\nNr. Patients={nr_pats}", fontsize=20)
+ 
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.tight_layout()
+        plt.savefig(self.images_output_path / "Average_Spike_Activity.png")
+        #plt.waitforbuttonpress()
+        plt.close()
+
+        pass
+
+
+
+    def plot_sleep_stage_durations(self, stage_duration_spike_rate_df:pd.DataFrame=None):
+        nr_pats = len(stage_duration_spike_rate_df.PatID.unique())
+
+        #sleep_ref_img_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\pyeeg_toolbox\\persyst\\SleepStages_Reference.png")
+        sleep_ref_img_path = os.getcwd()+'/pyeeg_toolbox/persyst/SleepStages_Reference.png'
+        sleep_ref_img= Image.open(sleep_ref_img_path)
+        rsz_ratio = 2
+        img_rsz = (int(sleep_ref_img.size[0]/rsz_ratio), int(sleep_ref_img.size[1]/rsz_ratio))
+        sleep_ref_img = sleep_ref_img.resize(img_rsz)
+
+        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
+        
+        to_plot_stage_names = ['N3', 'N2', 'N1', 'REM']
+        sum_stages_dur_mins = []
+        for stage_name in to_plot_stage_names:
+            stage_sel = stage_duration_spike_rate_df.Stage==stage_name
+            assert stage_sel.sum() == nr_pats, "More than one entry per patient"
+            sum_stages_dur_mins.append(stage_duration_spike_rate_df.StageDurM[stage_sel].sum())
+            pass
+
+        to_plot_stages_colors = [self.stages_colors[k] for k in to_plot_stage_names]
+
+        sum_stages_dur_perc = (np.array(sum_stages_dur_mins)/np.sum(sum_stages_dur_mins))*100
+        wedgeprops = {"edgecolor" : "white", 'linewidth': 5, 'antialiased': True}
+        
+        patches, texts, pcts = axs.pie(x=sum_stages_dur_perc, labels=to_plot_stage_names, colors=to_plot_stages_colors, wedgeprops=wedgeprops, autopct='%.0f%%', textprops={'fontsize':24, 'color':"w", 'weight':'bold'}, startangle=-200)
+        for i, patch in enumerate(patches):
+            texts[i].set_color(patch.get_facecolor())
+        axs.set_ylabel("Relative Duration of Sleep Stages (%)", fontsize=24)
+        axs.set_title(f"Proportion of summed duration of Sleep Stages\nNr.Patients = {nr_pats}", fontsize=24, color='black')
+        pass
+        #plt.legend(loc='lower right', fontsize=24)
+
+        # Overlay image on plot
+        im_width, im_height = sleep_ref_img.size
+        bbox = fig.get_window_extent() 
+        fig.figimage(sleep_ref_img, xo=int(bbox.x1-im_width/2), yo=int(bbox.y1-im_height/2), zorder=3, alpha=.7, origin='upper')
+
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.tight_layout()
+        plt.savefig(self.images_output_path / "Duration_Of_Sleep_Stages.png")
+        #plt.waitforbuttonpress()
+        plt.close()
+
+    def plot_spike_occ_rate(self, stage_duration_spike_rate_df:pd.DataFrame=None):
+        nr_pats = len(stage_duration_spike_rate_df.PatID.unique())
+
+        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
+        assert nr_pats == len(stage_duration_spike_rate_df.PatID.unique()), "More than one entry per patient"
+        sns.violinplot(data=stage_duration_spike_rate_df, x='Stage', y='SpikeOccRate', hue='Stage', palette=self.stages_colors, ax=axs)
+        axs.set_ylabel("Spikes Activity (uV)", fontsize=24)
+        axs.set_title(f"Average Spike Activity\nNr.Patients = {nr_pats}", fontsize=24)
+
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.tight_layout()
+        plt.savefig(self.images_output_path / "Average_Spike_OccRate.png")
+        #plt.waitforbuttonpress()
+        plt.close()
+
 if __name__ == "__main__":
 
+    # Predict SOZ based on Spike Activity
     studies_ls =  [ACH_Pediatric_Patients(), fr_ILAES2025_patients()] # ACH_Pediatric_Patients, fr_ILAES2025_patients
     prediction_results_ls = []
     for study in studies_ls:
         print(f"Study: {study.dataset_name}")
         if 'freiburg' in str(study.eeg_data_path).lower():
-            images_output_path = Path(os.getcwd()) / "Images_Output"
+            images_opath = Path(os.getcwd()) / "Images_Output"
         else:
-            images_output_path = Path(os.getcwd()) / "Images_Output_Pediatric"
-        os.makedirs(images_output_path, exist_ok=True)
+            images_opath = Path(os.getcwd()) / "Images_Output_Pediatric"
+        os.makedirs(images_opath, exist_ok=True)
 
         pats_ls = list(study.patients.keys())
 
@@ -383,16 +402,21 @@ if __name__ == "__main__":
         for k,v in stages_colors.items():
             stages_colors[k] = (v[0]/255, v[1]/255, v[2]/255)
 
-        spike_analyzer = Spike_Activity_Analyzer(characterization_datapath, stages_spikes_duration_rate_datapath, pats_ls, sleep_stages_ls, stages_colors, images_output_path)
+        spike_analyzer = Spike_Activity_Analyzer(characterization_datapath, stages_spikes_duration_rate_datapath, pats_ls, sleep_stages_ls, stages_colors, images_opath)
 
         spike_data_df = spike_analyzer.read_patient_spike_data()
+        spike_analyzer.plot_per_stage_spike_activity(spike_data_df)
+
         spike_data_df = spike_analyzer.handle_patient_outliers(spike_data_df)
         spike_data_df = spike_analyzer.get_patient_scaled_spike_data(spike_data_df)
 
         spike_analyzer.hypothesis_test_soz_vs_nonsoz(spike_data_df)
         prediction_results_df = spike_analyzer.predict_soz_with_spike_occ_rate(spike_data_df)
-
         prediction_results_ls.append(prediction_results_df)
+
+        stage_duration_spike_rate_df = spike_analyzer.read_stages_duration_and_spike_rates()
+        spike_analyzer.plot_sleep_stage_durations(stage_duration_spike_rate_df)
+        spike_analyzer.plot_spike_occ_rate(stage_duration_spike_rate_df)
 
     for i, study in enumerate(studies_ls):
         print(f"\n\nStudy: {study.dataset_name}")
@@ -407,5 +431,3 @@ if __name__ == "__main__":
         # print('Std_MCC')
         # print(prediction_results_df[prediction_results_df.Metric=='MCC'][['Stage', 'Value']].groupby(['Stage']).std())
 
-        #spike_analyzer.plot_spike_occ_rate(spike_data_df)
-        #plot_sleep_stage_durations(pats_ls, images_output_path)
