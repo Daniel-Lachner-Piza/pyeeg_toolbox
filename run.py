@@ -58,8 +58,8 @@ if __name__ == "__main__":
     os.makedirs(output_path, exist_ok=True)
 
     study_info = fr_ILAES2025_patients()
-    # study_info = ACH_Pediatric_Patients()
-    # study_info = ACH_Pediatric_Patients_Spike_Drive()
+    #study_info = ACH_Pediatric_Patients()
+    #study_info = ACH_Pediatric_Patients_Spike_Drive()
 
     output_path = Path(os.getcwd()) / "Vectorized_WdwAn_Output"
     os.makedirs(output_path, exist_ok=True)

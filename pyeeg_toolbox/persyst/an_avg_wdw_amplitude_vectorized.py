@@ -159,6 +159,7 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         parral_jobs_nr = 20
         Parallel(n_jobs=parral_jobs_nr)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
 
+        force_recalc = True
         self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t, force_recalc=force_recalc)
 
         self.get_overall_ch_stage_spike_amplitude(file_extension=file_extension, mtg_t=mtg_t)
@@ -215,7 +216,8 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
             for stage_name in stages_ls:
                 stage_spike_cnt = np.sum(np.array(stage_spike_colect_dict['NrSpikes'])[np.array(stage_spike_colect_df.Stage)==stage_name])
                 stage_dur = np.sum(np.array(stage_spike_colect_dict['StageDurationS'])[np.array(stage_spike_colect_df.Stage)==stage_name])
-                stage_spike_occrate = stage_spike_cnt/(stage_dur/60)
+                #stage_spike_occrate = stage_spike_cnt/(stage_dur/60)
+                stage_spike_occrate = (stage_spike_cnt)/((len(eeg_reader.ch_names)*stage_dur)/60)
                 pat_stage_spike_occrate_dict['PatID'].append(self.pat_id)
                 pat_stage_spike_occrate_dict['Stage'].append(stage_name)
                 pat_stage_spike_occrate_dict['StageDurM'].append((stage_dur/60))
