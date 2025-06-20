@@ -13,7 +13,7 @@ from pyeeg_toolbox.persyst.an_avg_wdw_amplitude_vectorized import VectorizedAvgW
 
 from collections import defaultdict
 
-from studies_info import fr_ILAES2025_patients, ACH_Pediatric_Patients, ACH_Pediatric_Patients_Spike_Drive
+from studies_info import fr_ILAES2025_patients, ACH_Pediatric_Patients, ACH_Pediatric_Patients_Spike_Drive, ACH_Pediatric_Patients_All
 import pyeeg_toolbox.persyst.an_plot_avg_spike_amplitude as spk_plt
 import pyeeg_toolbox.persyst.an_plot_avg_wdw_amplitude as wdw_plt
 
@@ -25,7 +25,8 @@ def analyze_spike_wdws_vectorized(study_info, pat_id):
     pat_coords_path = study_info.channel_coordinates_data_path
     pat_szr_info_path = study_info.seizure_info_data_path
     spike_amplitude_analyzer = VectorizedAvgWdwAnalyzer(pat_id=pat_id, ieeg_data_path=pat_data_path, ch_coordinates_data_path=pat_coords_path, szr_info_data_path=pat_szr_info_path, output_path=output_path)
-    spike_amplitude_analyzer.run(file_extension='.lay', mtg_t='ir', force_recalc=FORCE_RECALC)
+    spike_amplitude_analyzer.summarize_patients_info(file_extension='.lay', mtg_t='ir')
+    #spike_amplitude_analyzer.run(file_extension='.lay', mtg_t='ir', force_recalc=FORCE_RECALC)
 
 def analyze_sleep_stages(study_info):
     all_pats_sleep_stages_df = pd.DataFrame()
@@ -58,15 +59,18 @@ if __name__ == "__main__":
     os.makedirs(output_path, exist_ok=True)
 
     study_info = fr_ILAES2025_patients()
-    #study_info = ACH_Pediatric_Patients()
-    #study_info = ACH_Pediatric_Patients_Spike_Drive()
+    study_info = ACH_Pediatric_Patients()
+    study_info = ACH_Pediatric_Patients_Spike_Drive()
+    #study_info = ACH_Pediatric_Patients_All()
 
     output_path = Path(os.getcwd()) / "Vectorized_WdwAn_Output"
     os.makedirs(output_path, exist_ok=True)
 
-
-    #sleep_a_df = analyze_sleep_stages(study_info)
-    results = Parallel(n_jobs=1)(delayed(analyze_spike_wdws_vectorized)(study_info, pat_id) for pat_id in study_info.patients.keys())
+    studies_ls = [fr_ILAES2025_patients(), ACH_Pediatric_Patients(), ACH_Pediatric_Patients_Spike_Drive()]
+    for study_info in studies_ls:
+        print(f"Processing {study_info.dataset_name}...")
+        #sleep_a_df = analyze_sleep_stages(study_info)
+        results = Parallel(n_jobs=1)(delayed(analyze_spike_wdws_vectorized)(study_info, pat_id) for pat_id in study_info.patients.keys())
 
 
     pass

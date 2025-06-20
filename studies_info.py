@@ -166,7 +166,7 @@ def ACH_Pediatric_Patients_Spike_Drive():
     if sys_info['hostname']=="LAPTOP-TFQFNF6U" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux": 
         study_info.eeg_data_path = Path("I:/")
     elif sys_info['hostname']=="DLP" and sys_info['machine']=="AMD64" and sys_info['system']=="Windows": 
-        study_info.eeg_data_path = Path("H:/SimultEEG_PediatricPatients")
+        study_info.eeg_data_path = Path("E:/SimultEEG_PediatricPatients")
     elif sys_info['hostname']=="dlp" and sys_info['machine']=="x86_64" and sys_info['system']=="Linux":
         study_info.eeg_data_path = Path("/media/dlp/I/")
     

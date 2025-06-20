@@ -15,8 +15,8 @@ For each patient
 		
 	- Select P15 Trends (F:\Definition_of_Trends)
 
-	- Create new Trend panel with the name:
-		ScalpSleepStages
+	- Create new Trend panel with the name: ScalpSleepStages
+			
 	- Add trend Sleep-Wake Stage (pick last one from the list)
 
 	- Process the trends for a short segment of the first laydat record, pause trend processing to save time (after about 10 seconds)

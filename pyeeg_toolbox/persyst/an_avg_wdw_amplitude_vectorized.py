@@ -106,6 +106,53 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                     return True
 
         return False
+    
+    def summarize_patients_info(self, file_extension:str='.lay', mtg_t:str='ir', force_recalc:bool=False)->None:
+        """
+        This function summarizes the patient information, including the number of patients, the number of EEG files per patient, and the total duration of EEG data.
+
+        Returns:
+        None
+        """
+        self.get_files_in_folder(file_extension)
+
+        assert len(self.pat_files_ls) > 0, f"No EEG files found in folder {self.ieeg_data_path}"
+        #assert len(self.pat_files_ls) >= 40, f"Duration of EEG data is less than 48 hours for patient {self.pat_id}"
+
+        self.pat_files_ls = np.sort(self.pat_files_ls)
+
+        rec_start_idx = 0
+        rec_end_idx = 52#48
+        if len(self.pat_files_ls) < rec_end_idx:
+            ##rec_start_idx = 0
+            rec_end_idx = len(self.pat_files_ls)+1
+        self.pat_files_ls = self.pat_files_ls[rec_start_idx:rec_end_idx]
+        #self.pat_files_ls = self.pat_files_ls[0:52]
+
+        total_eeg_dur_hrs = 0
+        nr_ieeg_channs = 0
+        sampling_rate = 0
+        nr_seizures = 0
+        pat_info = {'PatID': [], 'DurationHrs': [], 'NrIEEGChanns': [], 'SamplingRateHz': [], 'NrSeizures': []}
+        for this_eeg_fpath in self.pat_files_ls:
+            eeg_reader = EEG_IO(eeg_filepath=this_eeg_fpath, mtg_t=mtg_t)
+            nr_ieeg_channs = len(eeg_reader.ch_names)
+            sampling_rate = eeg_reader.fs
+            eeg_dur_hrs = eeg_reader.n_samples / eeg_reader.fs / 3600
+            total_eeg_dur_hrs += eeg_dur_hrs
+            pass
+        pat_info['PatID'].append(self.pat_id)
+        pat_info['DurationHrs'].append(int(np.round(total_eeg_dur_hrs)))
+        pat_info['NrIEEGChanns'].append(nr_ieeg_channs)
+        pat_info['SamplingRateHz'].append(sampling_rate)
+        pat_info['NrSeizures'].append(nr_seizures)
+        pat_info_df = pd.DataFrame(pat_info)
+        os.makedirs(self.output_path / "Patient_Info", exist_ok=True)
+        pat_info_fn = self.output_path / "Patient_Info" / f"AllPatsInfo.csv"
+        header = not os.path.isfile(pat_info_fn)
+        pat_info_df.to_csv(pat_info_fn, index=False, mode='a',header=header)
+        pass
+
 
     def run(self, file_extension:str='.lay', mtg_t:str='ir', force_recalc:bool=False)->None:
         """
@@ -156,7 +203,7 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                     return     
 
         ni_th = 1
-        parral_jobs_nr = 20
+        parral_jobs_nr = 1
         Parallel(n_jobs=parral_jobs_nr)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
 
         force_recalc = True
@@ -215,12 +262,14 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
             pat_stage_spike_occrate_dict = {'PatID':[], 'Stage':[], 'StageDurM':[], 'SpikeOccRate':[]}
             for stage_name in stages_ls:
                 stage_spike_cnt = np.sum(np.array(stage_spike_colect_dict['NrSpikes'])[np.array(stage_spike_colect_df.Stage)==stage_name])
-                stage_dur = np.sum(np.array(stage_spike_colect_dict['StageDurationS'])[np.array(stage_spike_colect_df.Stage)==stage_name])
-                #stage_spike_occrate = stage_spike_cnt/(stage_dur/60)
-                stage_spike_occrate = (stage_spike_cnt)/((len(eeg_reader.ch_names)*stage_dur)/60)
+                stage_dur_s = np.sum(np.array(stage_spike_colect_dict['StageDurationS'])[np.array(stage_spike_colect_df.Stage)==stage_name])
+                stage_dur_min = stage_dur_s/60
+                #stage_spike_occrate = stage_spike_cnt/stage_dur_min
+                #stage_spike_occrate = (stage_spike_cnt)/((len(eeg_reader.ch_names)*stage_dur_s)/60)
+                stage_spike_occrate = stage_spike_cnt/len(eeg_reader.ch_names)/stage_dur_min
                 pat_stage_spike_occrate_dict['PatID'].append(self.pat_id)
                 pat_stage_spike_occrate_dict['Stage'].append(stage_name)
-                pat_stage_spike_occrate_dict['StageDurM'].append((stage_dur/60))
+                pat_stage_spike_occrate_dict['StageDurM'].append(stage_dur_min)
                 pat_stage_spike_occrate_dict['SpikeOccRate'].append(stage_spike_occrate)
                 pass
 
@@ -291,7 +340,7 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         spike_charact_dict = {'Stage':[], 'Channel':[], 'Amplitude':[], 'NrClipsWithSpikes':[], 'SOZ':[]}
 
         soz_hits = [spike_data_colect_df.Channel.str.fullmatch(soz_chname.lower(), case=False).sum() for soz_chname in spike_channels_ls]
-        assert np.unique(soz_hits).size==1, f"Not all proecessing cycles assigned values to a SOZ channel for {self.pat_id}"
+        #assert np.unique(soz_hits).size==1, f"Not all processing cycles assigned values to a SOZ channel for {self.pat_id}"
         assert 0 not in np.unique(soz_hits), f"SOZ channels not found in EEG for {self.pat_id}"
 
         for sleep_stage in sleep_stages_ls:
