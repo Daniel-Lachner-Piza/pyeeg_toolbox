@@ -11,6 +11,7 @@ from PIL import Image
 from scipy import stats
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import RocCurveDisplay,roc_curve, roc_auc_score
 from pathlib import Path
 from sklearn.metrics import f1_score, matthews_corrcoef, roc_auc_score
 from sklearn.svm import SVC
@@ -115,7 +116,7 @@ class Spike_Activity_Analyzer:
 
         # Remove outliers from the data
         raise_min = np.abs(spike_data_df.Amplitude.min())+0.1 # add 1 to avoid log(0)
-        spike_data_df.loc[:, 'Amplitude'] = np.log(spike_data_df.Amplitude.values+raise_min) # log transform to reduce skewness, add 1 to avoid log(0)
+        #spike_data_df.loc[:, 'Amplitude'] = np.log(spike_data_df.Amplitude.values+raise_min) # log transform to reduce skewness, add 1 to avoid log(0)
 
         pats_ls = spike_data_df.Patient.unique()
         clean_spike_data_df = pd.DataFrame()
@@ -182,36 +183,73 @@ class Spike_Activity_Analyzer:
         nr_pats = len(spike_data_df.Patient.unique())
 
         # Compare SOZ vs Non-SOZ
-        fig, axs = plt.subplots(1, 6, figsize=FIGSIZE)
+        fig, axs = plt.subplots(1, 5, figsize=FIGSIZE)
 
-        res = stats.mannwhitneyu(spike_data_df.Amplitude[spike_data_df.SOZ=='SOZ'], spike_data_df.Amplitude[spike_data_df.SOZ=='Non-SOZ'])
-        nr_soz = len(spike_data_df[spike_data_df.SOZ=='SOZ'])
-        nr_non_soz = len(spike_data_df[spike_data_df.SOZ=='Non-SOZ'])
-        # All Stages
-        plt_ax = axs[0]
-        sns.boxplot(data=spike_data_df, x='SOZ', y='Amplitude', hue='SOZ', ax=axs[0])
-        plt_ax.set_title(f"All Stages\n p-value = {res.pvalue:.2e}\n nr.SOZ={nr_soz}, nr.NonSOZ={nr_non_soz}")
-        plt_ax.set_ylabel("Spike Activity \n(Scaled per Patient)")
-        plt_ax.grid(color='0.8', linestyle='-', linewidth=0.5)
+
+        res_dict = {'Stage':[], 'U_statistic':[], 'p_value':[]}
 
         # Compare SOZ vs Non-SOZ in the different sleep stages
         for si, stage_name in enumerate(self.sleep_stages_ls):
-            plt_ax = axs[si+1]
-            stage_data_df = spike_data_df[spike_data_df.Stage==stage_name]
+            plt_ax = axs[si]
+            stage_data_df = spike_data_df[spike_data_df.Stage==stage_name].copy().reset_index(drop=True)
+            stage_data_df.loc[:, 'Amplitude'] = stage_data_df.Amplitude.values*1000*1000 # convert to uV
             res = stats.mannwhitneyu(stage_data_df.Amplitude[stage_data_df.SOZ=='SOZ'], stage_data_df.Amplitude[stage_data_df.SOZ=='Non-SOZ'])
             nr_soz = len(stage_data_df[stage_data_df.SOZ=='SOZ'])
             nr_non_soz = len(stage_data_df[stage_data_df.SOZ=='Non-SOZ'])
-            sns.boxplot(data=stage_data_df, x='SOZ', y='Amplitude', hue='SOZ', ax=plt_ax)
-            plt_ax.set_title(f"{stage_name}\n p-value = {res.pvalue:.2e}\n nr.SOZ={nr_soz}, nr.NonSOZ={nr_non_soz}")
-            plt_ax.set_ylabel("Spike Activity \n(Scaled per Patient)")
-            plt_ax.grid(color='0.8', linestyle='-', linewidth=0.5)
+            res_dict['Stage'].append(stage_name)
+            res_dict['U_statistic'].append(res.statistic)
+            res_dict['p_value'].append(res.pvalue)
+            #sns.boxplot(data=stage_data_df, x='SOZ', y='Amplitude', hue='SOZ', ax=plt_ax)
+            
+            colors_soz = [c for c in self.stages_colors[stage_name]]
+            colors_soz.append(1)  # Add alpha channel for transparency
+            colors_non_soz = [c for c in self.stages_colors[stage_name]]
+            colors_non_soz.append(0.5)  # Add alpha channel for transparency
+            soz_colors_dict = {'SOZ':colors_soz, 'Non-SOZ':colors_non_soz}
+            sns.boxplot(data=stage_data_df, x='SOZ', y='Amplitude', hue='SOZ', palette=soz_colors_dict, showfliers=False, ax=plt_ax)
+            medians_df = stage_data_df[['SOZ', 'Amplitude']].groupby(['SOZ']).median().reset_index()
+
+            for xti, xtick in enumerate(plt_ax.get_xticks()):
+                median_val = medians_df.Amplitude.values[xti]
+                median_str = f"{median_val:.0f}"
+                plt_ax.text(x= xtick, y=median_val, s=median_str, horizontalalignment='center',size=32, color='k', weight='semibold') # size=10
+                pass
+
+            for pi, patch in enumerate(plt_ax.patches):
+                if pi == 0:
+                    # r, g, b, a = patch.get_facecolor() # Get current color (including alpha)
+                    #patch.set_facecolor((r, g, b, 0.5))
+                    patch.set_hatch('..')  # Add hatch pattern to differentiate SOZ and Non-SOZ
+                    fc = patch.get_facecolor()
+                    patch.set_edgecolor(fc)
+                    patch.set_facecolor('none')
+
+            if si == 0:
+                plt_ax.set_ylabel("Spike Activity (uV)", fontsize=32)
+            else:
+                plt_ax.set_ylabel("")
+                plt_ax.set_yticklabels("")
+
+            plt_ax.set_xlabel("")
+            plt_ax.tick_params(axis='x', labelsize=32, rotation=60)
+            plt_ax.tick_params(axis='y', labelsize=32)
+
+            if 'Freiburg' in self.study_name:
+                plt_ax.set_ylim(0, 90)
+            else:
+                plt_ax.set_ylim(0, 310)
+            plt_ax.set_title(f"{stage_name}", fontsize=32, color=self.stages_colors[stage_name], weight='bold')
+            # plt.xticks(fontsize=32)
+            # plt.yticks(fontsize=32)
 
         plt.get_current_fig_manager().full_screen_toggle()
-        plt.suptitle(f"{self.study_name}\nSpike Activity in SOZ vs. Non-SOZ\nNr. Patients={nr_pats}")
+        plt.suptitle(f"{self.study_name}", fontsize=48)
         plt.tight_layout()
         plt.savefig(self.images_output_path / "Spike_Activity_SOZ_vs_NonSOZ_Hypothesis_Tests.png")
         #plt.waitforbuttonpress()
         plt.close()
+        #print(res_dict) 
+        pass
 
     def oversample_patients(self, train_set_df):
         os_train_set_df = pd.DataFrame()
@@ -233,9 +271,14 @@ class Spike_Activity_Analyzer:
         # Predict SOZ based on Spike Activity
         analysis_stages = copy.copy(self.sleep_stages_ls)
         analysis_stages_colors = copy.copy(self.stages_colors)
-        analysis_stages.insert(0, 'AllStages')
-        analysis_stages_colors['AllStages'] = (0.5, 0.5, 0.5)
+        # analysis_stages.insert(0, 'AllStages')
+        # analysis_stages_colors['AllStages'] = (0.5, 0.5, 0.5)
         prediction_results = {'TestPatID':[], 'TestPatient':[], 'Stage':[], 'Metric':[], 'Value':[], 'NrClinicalSzrs':[], 'NrElectroSzrs':[]}
+
+        # Compare SOZ vs Non-SOZ
+        fig, axs = plt.subplots(1, len(analysis_stages), figsize=FIGSIZE, constrained_layout=True)
+
+        auroc_dict = {stage:[] for stage in analysis_stages}
         for si, stage_name in enumerate(analysis_stages):
             if stage_name == 'AllStages':
                 stage_data_df = spike_data_df[spike_data_df.Stage!='Unknown']
@@ -244,6 +287,8 @@ class Spike_Activity_Analyzer:
 
             pass
 
+            roc_avg = {'fpr':np.linspace(0,1,1000), 'tpr':np.zeros_like(np.linspace(0,1,1000))}
+            auroc_ls = []
             for pidx, pat_id in enumerate(stage_data_df.Patient.unique()):
                 train_set_df = stage_data_df[stage_data_df.Patient!=pat_id]
                 test_set_df = stage_data_df[stage_data_df.Patient==pat_id]
@@ -256,7 +301,7 @@ class Spike_Activity_Analyzer:
                 X_train = train_set_df.Amplitude.to_numpy().reshape(-1, 1)
                 y_train = train_set_df.SOZ.to_numpy()=='SOZ'
                 X_train, y_train = RandomOverSampler(random_state=42).fit_resample(X_train, y_train)
-                print(f"Positives to Negatives Ratio:{np.sum(y_train)/len(y_train)*100}")
+                #print(f"Positives to Negatives Ratio:{np.sum(y_train)/len(y_train)*100}")
                 
                 X_test = test_set_df.Amplitude.to_numpy().reshape(-1, 1)
                 y_test = test_set_df.SOZ.to_numpy()=='SOZ'
@@ -283,25 +328,37 @@ class Spike_Activity_Analyzer:
                 model.fit(X_train, y_train)
                 y_predicted = model.predict(X_test)
 
-                # model = KNeighborsClassifier(n_neighbors=3, weights='uniform', algorithm='auto', n_jobs=-1)
-                # model.fit(X_train, y_train)
-                # y_predicted = model.predict(X_test)
+                # Get probabilities for the positive class
+                y_predicted_proba = model.predict_proba(X_test)[:, 1]
+                # Calculate ROC Curve points
+                fpr, tpr, thresholds = roc_curve(y_test, y_predicted_proba)
+                # Calculate AUC
+                y_predicted_bin = model.decision_function(X_test)
 
-                # model = SVC()
-                # model.fit(X_train, y_train)
-                # y_predicted = model.predict(X_test)
+                auc_score = roc_auc_score(y_test, y_predicted_proba)  # Use a threshold of 0.5 for binary classification
+                #auroc_val = roc_auc_score(y_test, y_predicted_bin)
+                auroc_ls.append(auc_score)
+                auroc_dict[stage_name].append(auc_score)
+                # print(f"Binary AUC Score: {auroc_val:.2f}")
+                # print(f"Probab. AUC Score: {auc_score:.2f}")
 
-                #print("Training Set", len(y_test))
+                # interpolate tpr to have 100 points
+                tpr_interp = np.interp(roc_avg['fpr'], fpr, tpr)
 
+                roc_avg['tpr'] = np.add(roc_avg['tpr'], tpr_interp)
+                
                 pat_szrcnt_df = self.szr_cnt_df.loc[self.szr_cnt_df.PatID.str.fullmatch(pat_id, case=False)]
 
-                auroc_val = roc_auc_score(y_test, y_predicted)
+                label=f"{pat_id}(AUC:{auc_score}:.2f)"
+                axs[si].plot(roc_avg['fpr'], tpr_interp, color=analysis_stages_colors[stage_name], alpha=0.5, linewidth=1, linestyle='-')                
+                pass
+
                 mcc_val = matthews_corrcoef(y_test, y_predicted)
                 prediction_results['TestPatient'].append(pidx)
                 prediction_results['TestPatID'].append(pat_id)
                 prediction_results['Stage'].append(stage_name)
                 prediction_results['Metric'].append('AUROC')
-                prediction_results['Value'].append(auroc_val)
+                prediction_results['Value'].append(auc_score)
                 prediction_results['NrClinicalSzrs'].append(pat_szrcnt_df.ClinicalSzr.values[0])
                 prediction_results['NrElectroSzrs'].append(pat_szrcnt_df.SubclinicalSzr.values[0])
 
@@ -314,7 +371,45 @@ class Spike_Activity_Analyzer:
                 prediction_results['NrElectroSzrs'].append(pat_szrcnt_df.SubclinicalSzr.values[0])
                 pass
 
-        prediction_results_df = pd.DataFrame(prediction_results)
+            roc_avg['tpr'] /= len(stage_data_df.Patient.unique())
+            # = 1.0  # Ensure the last point is (1,1)
+            prediction_results_df = pd.DataFrame(prediction_results)
+
+            label=f"Avg.ROC(Avg.AUC: {np.mean(auroc_ls):.2f})"
+            axs[si].plot(roc_avg['fpr'], roc_avg['tpr'],color=analysis_stages_colors[stage_name], alpha=1, linewidth=8, linestyle='-')
+            axs[si].plot(np.linspace(0,1,100), np.linspace(0,1,100),color='k', alpha=1, linewidth=1, linestyle='--')
+
+            axs[si].set_title(f"{stage_name}", fontsize=48)
+            
+            if si==0:
+                axs[si].set_ylabel("TPR", fontsize=32)
+            else:
+                axs[si].set_ylabel("")
+                axs[si].set_yticklabels("")
+            axs[si].set_xlabel("FPR", fontsize=32)
+
+            axs[si].set_xticks(np.linspace(0, 1, 5))
+            axs[si].set_yticks(np.linspace(0, 1, 5))
+            axs[si].tick_params(axis='x', rotation=45, labelsize=32)          
+            axs[si].tick_params(axis='y', rotation=0, labelsize=32)
+
+            # Add text with a text box to the subplot
+            text_str = f"AUROC\nAvg.: {np.mean(auroc_ls):.2f}\nStd.Dev.: {np.std(auroc_ls):.2f}"
+            axs[si].text(0.5, 0.98, text_str,
+                    transform=axs[si].transAxes, # Use axes coordinates
+                    fontsize=32,
+                    verticalalignment='top',
+                    horizontalalignment='center',
+                    bbox={'facecolor': analysis_stages_colors[stage_name], 'alpha': 0.7, 'pad': 5})
+            print(f"Stage: {stage_name}, AUROC: {np.mean(auroc_ls):.3f} (std.dev.: {np.std(auroc_ls):.3f})")       
+                
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.subplots_adjust(wspace=0.3, hspace=0.5, left=0.1, right=0.9, bottom=0.3, top=0.7)
+        #plt.show()
+        plt.savefig(self.images_output_path / "SOZ_Prediction_ROC_Curves.png")
+        plt.close()
+        pass
+
 
         for sleep_stage in analysis_stages:
             auroc_vals = prediction_results_df[np.logical_and(prediction_results_df.Metric=='AUROC', prediction_results_df.Stage==sleep_stage)].Value.to_numpy()
@@ -329,63 +424,82 @@ class Spike_Activity_Analyzer:
         print(prediction_results_df[prediction_results_df.Metric=='AUROC'][['Stage', 'Value']].groupby(['Stage']).std())
         pass
 
-    ################
         # Conduct the repeated measures ANOVA 
         test_prediction_results_df = prediction_results_df[prediction_results_df.Metric=='AUROC'].reset_index(drop=True).copy()
         anova_results = AnovaRM(data=test_prediction_results_df, subject='TestPatient', depvar='Value', within=['Stage']).fit()
         print(anova_results)
         p_val_rmanova = anova_results.anova_table['Pr > F'].mean()
 
-
-    ###############
-        all_stages_auroc = test_prediction_results_df.groupby('Stage').Value.get_group('AllStages').values
+        #all_stages_auroc = test_prediction_results_df.groupby('Stage').Value.get_group('AllStages').values
         n3_auroc = test_prediction_results_df.groupby('Stage').Value.get_group('N3').values
         n2_auroc = test_prediction_results_df.groupby('Stage').Value.get_group('N2').values
         n1_auroc = test_prediction_results_df.groupby('Stage').Value.get_group('N1').values
         rem_auroc = test_prediction_results_df.groupby('Stage').Value.get_group('REM').values
         wake_auroc = test_prediction_results_df.groupby('Stage').Value.get_group('Wake').values
 
-        stat_val, p_val = stats.kruskal(all_stages_auroc, n3_auroc, n2_auroc, n1_auroc, rem_auroc, wake_auroc)
+        stat_val, p_val = stats.kruskal(n3_auroc, n2_auroc, n1_auroc, rem_auroc, wake_auroc)
+        stat_val, p_val = stats.kruskal(auroc_dict['N3'], auroc_dict['N2'], auroc_dict['N1'], auroc_dict['REM'], auroc_dict['Wake'])
         pass
 
-    # Perform Friedman test
-    #     all_pats_test_data = []
-    #     for stage in prediction_results_df[prediction_results_df.Metric=='AUROC'].Stage.unique():
-    #         test_data = prediction_results_df[(prediction_results_df.Metric=='AUROC')&(prediction_results_df.Stage==stage)].Value.to_numpy()
-    #         all_pats_test_data.append(test_data)
-    #     assert np.unique([len(vec) for vec in all_pats_test_data]).shape[0]==1, "Not all patients have the same number of entries per stage"
-    #     all_pats_test_data = np.array(all_pats_test_data).T
-    #     prediction_results_df[(prediction_results_df.Metric=='AUROC')].reset_index
-    #     friedman_stat, friedman_p_val = stats.friedmanchisquare(
-    #         prediction_results_df[(prediction_results_df.Metric=='AUROC')&(prediction_results_df.Stage=='N3')].Value.to_numpy(),
-    #         prediction_results_df[(prediction_results_df.Metric=='AUROC')&(prediction_results_df.Stage=='N2')].Value.to_numpy(),
-    #         prediction_results_df[(prediction_results_df.Metric=='AUROC')&(prediction_results_df.Stage=='N1')].Value.to_numpy(),
-    #         prediction_results_df[(prediction_results_df.Metric=='AUROC')&(prediction_results_df.Stage=='REM')].Value.to_numpy(),
-    #         prediction_results_df[(prediction_results_df.Metric=='AUROC')&(prediction_results_df.Stage=='Wake')].Value.to_numpy(),
-    #         nan_policy='raise',
-    #         )
-    #     print(f"Friedman test: statistic = {friedman_stat:.2f}, p-value = {friedman_p_val:.2e}")
+        ###########################
+        test_results = np.ones((len(analysis_stages),len(analysis_stages)))
+        for ia, stage_name_a in enumerate(analysis_stages):
+            aurocs_a = auroc_dict[stage_name_a]
+            for ib, stage_name_b in enumerate(analysis_stages):
+                aurocs_b = auroc_dict[stage_name_b]
+                if ia!= ib:
+                    # wilcoxon_stat, wilcoxon_p_val = stats.wilcoxon(aurocs_a, aurocs_b, nan_policy='raise', alternative='two-sided')
+                    # test_results[ia,ib] = wilcoxon_p_val
+                    t_stat, wilcoxon_p_val = stats.ttest_rel(aurocs_a, aurocs_b, nan_policy='raise', alternative='two-sided')
+                    test_results[ia,ib] = wilcoxon_p_val
 
-    #     # Perform Dunn's test for multiple comparisons
-    #     p_values = sp.posthoc_dunn(spike_data_df_plot, val_col = 'Amplitude', group_col='Stage', p_adjust='bonferroni', sort=True)
-    #     print(p_values)
-    # ###############
+        # Create a mask
+        mask = np.triu(np.ones_like(test_results, dtype=bool))
+        threshold = 0.05 / ((len(analysis_stages) * (len(analysis_stages) - 1))/2)  # Bonferroni correction for multiple comparisons
+        threshold = 0.05 / (len(analysis_stages)-1)  # Bonferroni correction for multiple comparisons
+        print(f"Bonferroni corrected threshold: {threshold:.3f}")
+                             
+        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
+        ax = sns.heatmap(test_results, vmin=0, vmax=threshold, center=threshold, mask=mask, cmap='coolwarm', annot=True, fmt=".3f", annot_kws={"size": 32}, linewidths=.5, linecolor='white', cbar_kws={"shrink": .8},ax=axs)
+        cbar = ax.collections[0].colorbar
+        # Adjust the font size of the colorbar tick labels
+        cbar.ax.tick_params(labelsize=32) # Set specific font size
+        cbar.set_label('p value', fontsize=32) # Set colorbar label
+
+        #ax = sns.heatmap(test_results, mask=mask, center=0, annot=True, fmt='.2f', square=True, cmap=cmap)
+        ax.grid(False)
+        ax.set_xticklabels(analysis_stages, rotation=45, fontsize=32)
+        ax.set_yticklabels(analysis_stages, rotation=0, fontsize=32)
+        alpha_str = r" $\alpha$"        
+        plt.title(f"Spike Activity\nWilcoxon Signed-Rank Test p-values\n({alpha_str}:{threshold})", fontsize=36)
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.tight_layout()
+        plt.savefig(self.images_output_path / "SOZ_Localization_Wilcoxon_Test_Results.png")
+        plt.close()
+
+
+    ############################
 
         fig, axs = plt.subplots(1, 1, figsize=(4,8), sharey=True)
         #ax = axs[0]
         ax = axs
         box_plot = sns.boxplot(data=prediction_results_df[prediction_results_df.Metric=='AUROC'], x='Stage', y='Value', hue='Stage', palette=analysis_stages_colors, ax=ax)
-        axs.set_title(f"Area under the ROC Curve\nNr. Patients={nr_pats}", fontsize=24)
-        axs.set_ylabel("AUROC", fontsize=24)
+        axs.set_title(f"Area under the ROC Curve\nNr. Patients={nr_pats}", fontsize=48)
+        axs.set_ylabel("AUROC", fontsize=32)
+        axs.set_xlabel("")
+        ax.set_xticklabels(analysis_stages, fontsize=32)
+        #axs.tick_params(axis='x', rotation=0, labelsize=32)
+        axs.tick_params(axis='y', rotation=0, labelsize=32)
+
         medians_df = prediction_results_df[prediction_results_df.Metric=='AUROC'][['Stage', 'Value']].groupby(['Stage']).median().reset_index()
         vertical_offset = prediction_results_df[prediction_results_df.Metric=='AUROC'].Value.median() * 0.05 # offset from median for display
         for xtick in box_plot.get_xticks():
             median_val = medians_df.Value[medians_df.Stage==analysis_stages[xtick]].to_numpy()[0]
             median_str = f"{median_val:.2f}"
-            box_plot.text(x= xtick, y=median_val, s=median_str, horizontalalignment='center',size=24,color='w',weight='semibold') # size=10
+            box_plot.text(x= xtick, y=median_val, s=median_str, horizontalalignment='center',size=32,color='w',weight='semibold') # size=10
             pass
 
-        box_plot.text(x=box_plot.get_xticks()[-1], y=0.95, s=f"Repeated Measures Anova p_val: {p_val_rmanova:.2f}", horizontalalignment='center',size=14,color='r',weight='bold')
+        #box_plot.text(x=box_plot.get_xticks()[-1], y=0.95, s=f"Repeated Measures Anova p_val: {p_val_rmanova:.2f}", horizontalalignment='center',size=14,color='r',weight='bold')
 
 
         #ax = axs[1]
@@ -400,9 +514,8 @@ class Spike_Activity_Analyzer:
         #     box_plot.text(x= xtick, y=median_val, s=median_str, horizontalalignment='center',size=16,color='w',weight='semibold')
         #     pass
 
-        plt.tick_params(axis='x', labelsize=16)
         plt.get_current_fig_manager().full_screen_toggle()
-        plt.suptitle(f"{self.study_name}\nPrediction of SOZ", fontsize=36)
+        plt.suptitle(f"{self.study_name}\nPrediction of SOZ", fontsize=48)
         plt.tight_layout()
         plt.savefig(self.images_output_path / "SOZ_Prediction.png")
         #plt.waitforbuttonpress()
@@ -410,7 +523,133 @@ class Spike_Activity_Analyzer:
 
         return prediction_results_df
 
+    def predict_soz_with_spike_activity_figure_1(self, spike_data_df:pd.DataFrame=None, add_features:bool=False):
+        
+        nr_pats = len(spike_data_df.Patient.unique())
 
+        # Predict SOZ based on Spike Activity
+        analysis_stages = copy.copy(self.sleep_stages_ls)
+        analysis_stages_colors = copy.copy(self.stages_colors)
+        prediction_results = {'TestPatID':[], 'TestPatient':[], 'Stage':[], 'Metric':[], 'Value':[], 'NrClinicalSzrs':[], 'NrElectroSzrs':[]}
+
+        # Compare SOZ vs Non-SOZ
+        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE, constrained_layout=True)
+
+        for si, stage_name in enumerate(analysis_stages):
+            if stage_name == 'AllStages':
+                stage_data_df = spike_data_df[spike_data_df.Stage!='Unknown']
+            else:
+                stage_data_df = spike_data_df[spike_data_df.Stage==stage_name]
+            pass
+
+            roc_avg = {'fpr':np.linspace(0,1,1000), 'tpr':np.zeros_like(np.linspace(0,1,1000))}
+            auroc_ls = []
+            for pidx, pat_id in enumerate(stage_data_df.Patient.unique()):
+                train_set_df = stage_data_df[stage_data_df.Patient!=pat_id]
+                test_set_df = stage_data_df[stage_data_df.Patient==pat_id]
+
+                X_train = train_set_df.Amplitude.to_numpy().reshape(-1, 1)
+                y_train = train_set_df.SOZ.to_numpy()=='SOZ'
+                X_train, y_train = RandomOverSampler(random_state=42).fit_resample(X_train, y_train)
+                #print(f"Positives to Negatives Ratio:{np.sum(y_train)/len(y_train)*100}")
+                
+                X_test = test_set_df.Amplitude.to_numpy().reshape(-1, 1)
+                y_test = test_set_df.SOZ.to_numpy()=='SOZ'
+
+                assert np.unique(y_train).shape[0] > 1, "Train set has only one class"
+                assert np.unique(y_test).shape[0] > 1, "Test set has only one class"
+
+                # Basic feature engineering
+                if add_features:
+                    X_train = np.hstack([X_train, X_train**2, X_train**3])
+                    X_test = np.hstack([X_test, X_test**2, X_test**3])
+
+                model = LogisticRegression(penalty='l2', class_weight=None, solver='liblinear', max_iter=10000, tol=0.1)
+
+                model.fit(X_train, y_train)
+                y_predicted = model.predict(X_test)
+
+                # Get probabilities for the positive class
+                y_predicted_proba = model.predict_proba(X_test)[:, 1]
+                # Calculate ROC Curve points
+                fpr, tpr, thresholds = roc_curve(y_test, y_predicted_proba)
+                # Calculate AUC
+                y_predicted_bin = model.decision_function(X_test)
+
+                auc_score = roc_auc_score(y_test, y_predicted_proba)  # Use a threshold of 0.5 for binary classification
+                #auroc_val = roc_auc_score(y_test, y_predicted_bin)
+                auroc_ls.append(auc_score)
+                # print(f"Binary AUC Score: {auroc_val:.2f}")
+                # print(f"Probab. AUC Score: {auc_score:.2f}")
+
+                # interpolate tpr to have 100 points
+                tpr_interp = np.interp(roc_avg['fpr'], fpr, tpr)
+
+                roc_avg['tpr'] = np.add(roc_avg['tpr'], tpr_interp)
+                
+                pat_szrcnt_df = self.szr_cnt_df.loc[self.szr_cnt_df.PatID.str.fullmatch(pat_id, case=False)]
+
+                mcc_val = matthews_corrcoef(y_test, y_predicted)
+                prediction_results['TestPatient'].append(pidx)
+                prediction_results['TestPatID'].append(pat_id)
+                prediction_results['Stage'].append(stage_name)
+                prediction_results['Metric'].append('AUROC')
+                prediction_results['Value'].append(auc_score)
+                prediction_results['NrClinicalSzrs'].append(pat_szrcnt_df.ClinicalSzr.values[0])
+                prediction_results['NrElectroSzrs'].append(pat_szrcnt_df.SubclinicalSzr.values[0])
+
+                prediction_results['TestPatient'].append(pidx)
+                prediction_results['TestPatID'].append(pat_id)
+                prediction_results['Stage'].append(stage_name)
+                prediction_results['Metric'].append('MCC')
+                prediction_results['Value'].append(mcc_val)
+                prediction_results['NrClinicalSzrs'].append(pat_szrcnt_df.ClinicalSzr.values[0])
+                prediction_results['NrElectroSzrs'].append(pat_szrcnt_df.SubclinicalSzr.values[0])
+                pass
+
+            roc_avg['tpr'] /= len(stage_data_df.Patient.unique())
+            # = 1.0  # Ensure the last point is (1,1)
+            prediction_results_df = pd.DataFrame(prediction_results)
+
+            label=f"{stage_name}(avg. AUROC: {np.mean(auroc_ls):.2f})"
+            axs.plot(roc_avg['fpr'], roc_avg['tpr'],color=analysis_stages_colors[stage_name], alpha=1, linewidth=8, linestyle='-',label=label)
+            axs.plot(np.linspace(0,1,100), np.linspace(0,1,100),color='k', alpha=1, linewidth=1, linestyle='--')
+
+            #axs.set_title(f"ROC, All Sleep Stages", fontsize=48)
+            
+            axs.set_ylabel("TPR", fontsize=32)
+            axs.set_xlabel("FPR", fontsize=32)
+            # if si==0:
+            #     axs.set_ylabel("")
+            #     axs.set_yticklabels("")
+
+            axs.set_xticks(np.arange(0, 1.1, 0.1))
+            axs.set_yticks(np.arange(0, 1.1, 0.1))
+            axs.tick_params(axis='x', rotation=45, labelsize=32)          
+            axs.tick_params(axis='y', rotation=0, labelsize=32)
+
+            # # Add text with a text box to the subplot
+            # text_str = f"SOZ Prediction\nROC  Curves}"
+            # axs.text(0.5, 0.98, text_str,
+            #         transform=axs.transAxes, # Use axes coordinates
+            #         fontsize=32,
+            #         verticalalignment='top',
+            #         horizontalalignment='center',
+            #         bbox={'facecolor': analysis_stages_colors[stage_name], 'alpha': 0.7, 'pad': 5})
+            print(f"Stage: {stage_name}, AUROC: {np.mean(auroc_ls):.3f} (std.dev.: {np.std(auroc_ls):.3f})")       
+        
+        axs.set_title(f"SOZ Prediction\nROC Curves, All Sleep Stages", fontsize=48)
+        axs.plot(np.linspace(0,1,100), np.linspace(0,1,100),color='k', alpha=1, linewidth=1, linestyle='--')    
+        axs.legend(loc='lower right', fontsize=32, frameon=True, facecolor='w', edgecolor='k')
+        axs.grid(True, linestyle='-', alpha=1, linewidth=1)
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.subplots_adjust(wspace=0.3, hspace=0.5, left=0.1, right=0.9, bottom=0.3, top=0.7)
+        plt.savefig(self.images_output_path / "SOZ_Prediction_ROC_Curves_ver2.png")
+        #plt.show()
+        plt.close()
+        pass
+       
+    
     def plot_per_stage_spike_activity(self, spike_data_df:pd.DataFrame=None):
         
         spike_data_df_plot = spike_data_df.copy() 
@@ -432,10 +671,25 @@ class Spike_Activity_Analyzer:
         p_values = sp.posthoc_dunn(spike_data_df_plot, val_col = 'Amplitude', group_col='Stage', p_adjust='bonferroni', sort=True)
         print(p_values)
 
-        box_plot = sns.boxplot(data=spike_data_df_plot, x='Stage', y='Amplitude', hue='Stage', palette=self.stages_colors, showfliers=False)
-        plt.ylabel("Spike Activity (uV)", fontsize=16)
-        plt.xlabel("Sleep Stage", fontsize=16)
-        plt.title(f"{self.study_name}\nSpike Activity per Sleep Stage\nNr. Patients={nr_pats}", fontsize=20)
+        # Plot Spike Activity
+        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
+        ax=axs
+        box_plot = sns.boxplot(data=spike_data_df_plot, x='Stage', y='Amplitude', hue='Stage', palette=self.stages_colors, showfliers=False, ax=ax)
+        medians_df = spike_data_df_plot[['Stage', 'Amplitude']].groupby(['Stage']).median().reset_index()
+        stages_ls = spike_data_df_plot.Stage.unique().tolist()
+        for xtick in box_plot.get_xticks():
+            median_val = medians_df.Amplitude[medians_df.Stage==stages_ls[xtick]].to_numpy()[0]
+            median_str = f"{median_val:.2f}"
+            box_plot.text(x= xtick, y=median_val, s=median_str, horizontalalignment='center',size=32, color='w', weight='semibold') # size=10
+            pass
+        #box_plot.text(x=box_plot.get_xticks()[-1], y=0.95, s=f"Repeated Measures Anova p_val: {p_val_rmanova:.2f}", horizontalalignment='center',size=14,color='r',weight='bold')
+
+        plt.ylabel("Spike Activity (uV)", fontsize=32)
+        plt.xlabel("Sleep Stage", fontsize=32)
+        plt.title(f"{self.study_name}", fontsize=48)
+        plt.xticks(fontsize=32)
+        plt.yticks(fontsize=32)
+        #plt.ylim(0, 100)
  
         plt.get_current_fig_manager().full_screen_toggle()
         plt.tight_layout()
@@ -444,6 +698,75 @@ class Spike_Activity_Analyzer:
         plt.close()
 
         pass
+
+    def analyze_spike_activity_wake_sleep(self, spike_data_df:pd.DataFrame=None):
+        patients_ls = list(spike_data_df.Patient.unique())
+        nr_pats = len(patients_ls)
+
+
+# Analyze Spike Occurrence Rate
+        stages_ls  = stage_duration_spike_rate_df.Stage.unique().tolist()
+        data_analysis_dict = {
+            'Stage': [],
+            'Avg': [],
+            'StdDev': [],
+        }
+    
+        # Analyze Spike Activity
+        stages_ls  = spike_data_df.Stage.unique().tolist()
+        print('\nSpikeActivity (Avg, StdDev)')
+        test_results = np.ones((len(stages_ls),len(stages_ls)))
+        for ia, stage_name_a in enumerate(stages_ls):
+            stage_sel_a = spike_data_df.Stage==stage_name_a
+            spike_activity_a = spike_data_df.Amplitude[stage_sel_a].to_numpy()
+            spike_activity_a = spike_data_df[stage_sel_a][['Patient', 'Amplitude']].groupby('Patient').median().values.flatten()*1000*1000
+
+            data_analysis_dict['Stage'].append(stage_name_a)
+            data_analysis_dict['Avg'].append(np.mean(spike_activity_a))
+            data_analysis_dict['StdDev'].append(np.std(spike_activity_a))
+            print(f"{stage_name_a}: {data_analysis_dict['Avg'][-1]:.2f} (std.dev.: {data_analysis_dict['StdDev'][-1]:.2f}) µV")
+
+            for ib, stage_name_b in enumerate(stages_ls):
+                stage_sel_b = spike_data_df.Stage==stage_name_b
+                spike_activity_b = spike_data_df.Amplitude[stage_sel_b].to_numpy()
+                spike_activity_b = spike_data_df[stage_sel_b][['Patient', 'Amplitude']].groupby('Patient').median().values.flatten()*1000*1000
+
+                assert len(spike_activity_a) == len(spike_activity_b), "Spike rates for different stages have different lengths"
+
+                # run Wilcoxon signed-rank test
+                if ia != ib:
+                    wilcoxon_stat, wilcoxon_p_val = stats.wilcoxon(spike_activity_a, spike_activity_b, nan_policy='raise', alternative='two-sided')
+                    #print(f"Spike Activity {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
+                    test_results[ia,ib] = wilcoxon_p_val
+                    # run paired t-test
+                    t_stat, p_val = stats.ttest_rel(spike_activity_a, spike_activity_b, nan_policy='raise', alternative='two-sided')
+                    #print(f"Spike Activity {stage_name_a} vs {stage_name_b}\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
+                pass
+        pass
+
+        # Create a mask
+        mask = np.triu(np.ones_like(test_results, dtype=bool))
+        threshold = 0.05 / ((len(stages_ls) * (len(stages_ls) - 1))/2)  # Bonferroni correction for multiple comparisons
+        threshold = 0.05 / (len(stages_ls)-1)  # Bonferroni correction for multiple comparisons
+        print(f"Bonferroni corrected threshold: {threshold:.3f}")
+                             
+        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
+        ax = sns.heatmap(test_results, vmin=0, vmax=threshold, center=threshold, mask=mask, cmap='coolwarm', annot=True, fmt=".3f", annot_kws={"size": 32}, linewidths=.5, linecolor='white', cbar_kws={"shrink": .8},ax=axs)
+        cbar = ax.collections[0].colorbar
+        # Adjust the font size of the colorbar tick labels
+        cbar.ax.tick_params(labelsize=32) # Set specific font size
+        cbar.set_label('p value', fontsize=32) # Set colorbar label
+
+        #ax = sns.heatmap(test_results, mask=mask, center=0, annot=True, fmt='.2f', square=True, cmap=cmap)
+        ax.grid(False)
+        ax.set_xticklabels(stages_ls, rotation=45, fontsize=32)
+        ax.set_yticklabels(stages_ls, rotation=0, fontsize=32)
+        alpha_str = r" $\alpha$"        
+        plt.title(f"Spike Activity\nWilcoxon Signed-Rank Test p-values\n({alpha_str}:{threshold})", fontsize=36)
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.tight_layout()
+        plt.savefig(self.images_output_path / "Spike_Activity_Wilcoxon_Test_Results.png")
+        plt.close()
 
     def plot_group_sleep_stage_durations(self, stage_duration_spike_rate_df:pd.DataFrame=None):
         nr_pats = len(stage_duration_spike_rate_df.PatID.unique())
@@ -470,13 +793,13 @@ class Spike_Activity_Analyzer:
         sum_stages_dur_perc = (np.array(sum_stages_dur_mins)/np.sum(sum_stages_dur_mins))*100
         wedgeprops = {"edgecolor" : "white", 'linewidth': 5, 'antialiased': True}
         
-        patches, texts, pcts = axs.pie(x=sum_stages_dur_perc, labels=to_plot_stage_names, colors=to_plot_stages_colors, wedgeprops=wedgeprops, autopct='%.0f%%', textprops={'fontsize':24, 'color':"w", 'weight':'bold'}, startangle=-200)
+        patches, texts, pcts = axs.pie(x=sum_stages_dur_perc, labels=to_plot_stage_names, colors=to_plot_stages_colors, wedgeprops=wedgeprops, autopct='%.0f%%', textprops={'fontsize':32, 'color':"w", 'weight':'bold'}, startangle=-200)
         for i, patch in enumerate(patches):
             texts[i].set_color(patch.get_facecolor())
-        axs.set_ylabel("Relative Duration of Sleep Stages (%)", fontsize=24)
-        axs.set_title(f"{self.study_name}\nProportion of summed duration of Sleep Stages\nNr.Patients = {nr_pats}", fontsize=24, color='black')
+        axs.set_ylabel("Relative Duration of Sleep Stages (%)", fontsize=32)
+        axs.set_title(f"{self.study_name}\nProportion of summed duration of Sleep Stages\nNr.Patients = {nr_pats}", fontsize=48, color='black')
         pass
-        #plt.legend(loc='lower right', fontsize=24)
+        #plt.legend(loc='lower right', fontsize=32)
 
         # Overlay image on plot
         im_width, im_height = sleep_ref_img.size
@@ -519,12 +842,12 @@ class Spike_Activity_Analyzer:
             axs_row = int(idx/nr_plot_cols)
             axs_col = idx%nr_plot_cols
             ax = axs[axs_row, axs_col]
-            #patches, texts, pcts = ax.pie(x=sum_stages_dur_perc, labels=to_plot_stage_names, colors=to_plot_stages_colors, wedgeprops=wedgeprops, autopct='%.0f%%', textprops={'fontsize':24, 'color':"w", 'weight':'bold'}, startangle=-200)
+            #patches, texts, pcts = ax.pie(x=sum_stages_dur_perc, labels=to_plot_stage_names, colors=to_plot_stages_colors, wedgeprops=wedgeprops, autopct='%.0f%%', textprops={'fontsize':32, 'color':"w", 'weight':'bold'}, startangle=-200)
             #patches, texts, pcts = ax.pie(x=sum_stages_dur_perc, labels=new_to_plot_stage_names, colors=to_plot_stages_colors, wedgeprops=wedgeprops, autopct='%.0f%%', textprops={'fontsize':12, 'color':"w", 'weight':'bold'}, startangle=-200)
             patches, texts = ax.pie(sum_stages_dur_perc, labels=new_to_plot_stage_names, colors=to_plot_stages_colors, startangle=-200)
             for i, patch in enumerate(patches):
                 texts[i].set_color(patch.get_facecolor())
-            # ax.set_ylabel("Relative Duration of Sleep Stages (%)", fontsize=24)
+            # ax.set_ylabel("Relative Duration of Sleep Stages (%)", fontsize=32)
             ax.set_title(f"{self.pats_ls[idx]}", fontsize=12, color='black')
             pass 
 
@@ -549,11 +872,11 @@ class Spike_Activity_Analyzer:
             )
         
         for cont in bp_ax.containers:
-            plt.bar_label(cont, fmt='%.2f', fontsize=24, label_type='edge', padding=3, color='black', weight='bold')
-        axs.set_ylabel("Spikes Occ.Rate/min.", fontsize=32)
+            plt.bar_label(cont, fmt='%.2f', fontsize=32, label_type='edge', padding=3, color='black', weight='bold')
+        axs.set_ylabel("Spikes / electrode / min.", fontsize=32)
         axs.set_xlabel("Sleep Stage", fontsize=32)
         plt.xticks(fontsize=32)
-        plt.yticks(fontsize=24)
+        plt.yticks(fontsize=32)
         #axs.set_title(f"{self.study_name}\nSpike Occ.Rate/min.\nNr.Patients = {nr_pats}", fontsize=48)
         axs.set_title(f"{self.study_name}", fontsize=48)
 
@@ -607,11 +930,11 @@ class Spike_Activity_Analyzer:
                 # run Wilcoxon signed-rank test
                 if ia != ib:
                     wilcoxon_stat, wilcoxon_p_val = stats.wilcoxon(spike_rate_a, spike_rate_b, nan_policy='raise', alternative='two-sided')
-                    print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
+                    #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
                     test_results[ia,ib] = wilcoxon_p_val
                     # run paired t-test
                     t_stat, p_val = stats.ttest_rel(spike_rate_a, spike_rate_b, nan_policy='raise', alternative='two-sided')
-                    print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
+                    #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
                 pass
         pass
 
@@ -622,11 +945,11 @@ class Spike_Activity_Analyzer:
         print(f"Bonferroni corrected threshold: {threshold:.3f}")
                              
         fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
-        ax = sns.heatmap(test_results, vmin=0, vmax=threshold, center=threshold, mask=mask, cmap='coolwarm', annot=True, fmt=".3f", annot_kws={"size": 24}, linewidths=.5, linecolor='white', cbar_kws={"shrink": .8},ax=axs)
+        ax = sns.heatmap(test_results, vmin=0, vmax=threshold, center=threshold, mask=mask, cmap='coolwarm', annot=True, fmt=".3f", annot_kws={"size": 32}, linewidths=.5, linecolor='white', cbar_kws={"shrink": .8},ax=axs)
         cbar = ax.collections[0].colorbar
         # Adjust the font size of the colorbar tick labels
-        cbar.ax.tick_params(labelsize=24) # Set specific font size
-        cbar.set_label('p value', fontsize=24) # Set colorbar label
+        cbar.ax.tick_params(labelsize=32) # Set specific font size
+        cbar.set_label('p value', fontsize=32) # Set colorbar label
 
         #ax = sns.heatmap(test_results, mask=mask, center=0, annot=True, fmt='.2f', square=True, cmap=cmap)
         ax.grid(False)
@@ -734,8 +1057,8 @@ class Spike_Activity_Analyzer:
         
         axs.set_xticks([1, 2])
         axs.set_xticklabels(['Wake', 'Sleep'], fontsize=18)
-        axs.set_ylabel("Spike Occ.Rate/min.", fontsize=24)
-        axs.set_title(f"{self.study_name}\nSpike Occ.Rate/min.\nNr.Patients = {nr_pats}", fontsize=24)
+        axs.set_ylabel("Spike Occ.Rate/min.", fontsize=32)
+        axs.set_title(f"{self.study_name}\nSpike Occ.Rate/min.\nNr.Patients = {nr_pats}", fontsize=48)
         #axs.set_ylim(0, 1.5)
         axs.set_xlim(0.5, 2.5)
         axs.grid(color='0.8', linestyle='-', linewidth=0.5)
@@ -765,14 +1088,14 @@ class Spike_Activity_Analyzer:
         n1_szr_auroc = prediction_results_df[prediction_results_df.Stage=='N1'].groupby('HasSeizures').Value.get_group(True).values
         rem_szr_auroc = prediction_results_df[prediction_results_df.Stage=='REM'].groupby('HasSeizures').Value.get_group(True).values
         wake_szr_auroc = prediction_results_df[prediction_results_df.Stage=='Wake'].groupby('HasSeizures').Value.get_group(True).values
-        all_stages_szr_auroc = prediction_results_df[prediction_results_df.Stage=='AllStages'].groupby('HasSeizures').Value.get_group(True).values
+        #all_stages_szr_auroc = prediction_results_df[prediction_results_df.Stage=='AllStages'].groupby('HasSeizures').Value.get_group(True).values
 
         n2_noszr_auroc = prediction_results_df[prediction_results_df.Stage=='N2'].groupby('HasSeizures').Value.get_group(False).values
         n3_noszr_auroc = prediction_results_df[prediction_results_df.Stage=='N3'].groupby('HasSeizures').Value.get_group(False).values
         n1_noszr_auroc = prediction_results_df[prediction_results_df.Stage=='N1'].groupby('HasSeizures').Value.get_group(False).values
         rem_noszr_auroc = prediction_results_df[prediction_results_df.Stage=='REM'].groupby('HasSeizures').Value.get_group(False).values
         wake_noszr_auroc = prediction_results_df[prediction_results_df.Stage=='Wake'].groupby('HasSeizures').Value.get_group(False).values
-        all_stages_noszr_auroc = prediction_results_df[prediction_results_df.Stage=='AllStages'].groupby('HasSeizures').Value.get_group(False).values
+        #all_stages_noszr_auroc = prediction_results_df[prediction_results_df.Stage=='AllStages'].groupby('HasSeizures').Value.get_group(False).values
 
         mu_u, mu_p = stats.mannwhitneyu(n2_szr_auroc, n2_noszr_auroc, alternative='two-sided', use_continuity=True, method='auto')
         print(f"N2 AUROC Mann-Whitney U test: mu = {mu_u:.2f}, p-value = {mu_p:.2e}")
@@ -784,8 +1107,8 @@ class Spike_Activity_Analyzer:
         print(f"REM AUROC Mann-Whitney U test: mu = {mu_u:.2f}, p-value = {mu_p:.2e}")
         mu_u, mu_p = stats.mannwhitneyu(wake_szr_auroc, wake_noszr_auroc, alternative='two-sided', use_continuity=True, method='auto')
         print(f"Wake AUROC Mann-Whitney U test: mu = {mu_u:.2f}, p-value = {mu_p:.2e}")
-        mu_u, mu_p = stats.mannwhitneyu(all_stages_szr_auroc, all_stages_noszr_auroc, alternative='two-sided', use_continuity=True, method='auto')
-        print(f"All Stages AUROC Mann-Whitney U test: mu = {mu_u:.2f}, p-value = {mu_p:.2e}")
+        # mu_u, mu_p = stats.mannwhitneyu(all_stages_szr_auroc, all_stages_noszr_auroc, alternative='two-sided', use_continuity=True, method='auto')
+        # print(f"All Stages AUROC Mann-Whitney U test: mu = {mu_u:.2f}, p-value = {mu_p:.2e}")
 
         pass
         ###############
@@ -800,9 +1123,9 @@ class Spike_Activity_Analyzer:
         nr_pats = len(prediction_results_df.TestPatID.unique())
         fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
         sns.boxplot(data=prediction_results_df, x='HasSeizures', y='Value', hue='Stage', palette=analysis_stages_colors, ax=axs)
-        axs.set_title(f"{self.study_name}\nSOZ Prediction Performance vs. Nr. Clinical Seizures\nNr.Patients = {nr_pats}", fontsize=24)
-        axs.set_ylabel("AUROC", fontsize=24)
-        axs.set_xlabel("Nr. Clinical Seizures", fontsize=24)
+        axs.set_title(f"{self.study_name}\nSOZ Prediction Performance vs. Nr. Clinical Seizures\nNr.Patients = {nr_pats}", fontsize=48)
+        axs.set_ylabel("AUROC", fontsize=32)
+        axs.set_xlabel("Nr. Clinical Seizures", fontsize=32)
 
         plt.get_current_fig_manager().full_screen_toggle()
         plt.tight_layout()
@@ -851,12 +1174,13 @@ if __name__ == "__main__":
         # Read and analyze spike actvity data (average spike amplitude)
         spike_data_df = spike_analyzer.read_patient_spike_data()
         spike_analyzer.plot_per_stage_spike_activity(spike_data_df)
+        spike_analyzer.analyze_spike_activity_wake_sleep(spike_data_df)
         spike_data_df = spike_analyzer.handle_patient_outliers(spike_data_df.copy())
+        spike_analyzer.hypothesis_test_soz_vs_nonsoz(spike_data_df)
 
         spike_data_df = spike_analyzer.get_patient_scaled_spike_data(spike_data_df)
-
-        spike_analyzer.hypothesis_test_soz_vs_nonsoz(spike_data_df)
         prediction_results_df = spike_analyzer.predict_soz_with_spike_activity(spike_data_df, add_features=False)
+        spike_analyzer.predict_soz_with_spike_activity_figure_1(spike_data_df, add_features=False)
         spike_analyzer.plot_soz_prediction_performance_vs_szr_count(prediction_results_df)
         prediction_results_ls.append(prediction_results_df)
 
