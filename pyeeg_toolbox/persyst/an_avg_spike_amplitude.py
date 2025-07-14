@@ -419,7 +419,7 @@ class SpikeAmplitudeAnalyzer:
         return sleep_stage_secs_counter_dict
 
 
-    def save_spike_cumulator(self, filepath:str=None):
+    def save_spike_cumulator(self, filepath:Path=Path("spike_cumulator.pickle")) -> None:
         """
         Save the SpikeCumulator object to a file using pickle serialization.
 

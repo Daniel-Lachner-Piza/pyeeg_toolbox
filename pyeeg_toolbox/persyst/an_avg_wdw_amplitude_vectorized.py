@@ -203,10 +203,10 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                     return     
 
         ni_th = 1
-        parral_jobs_nr = 1
+        parral_jobs_nr = 16
         Parallel(n_jobs=parral_jobs_nr)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
 
-        force_recalc = True
+        #force_recalc = True
         self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t, force_recalc=force_recalc)
 
         self.get_overall_ch_stage_spike_amplitude(file_extension=file_extension, mtg_t=mtg_t)
@@ -462,7 +462,7 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         return spike_wdw_ni_vec
 
 
-    def get_channel_avg_wdw_vectorized(self, this_pat_eeg_fpath, mtg_t:str='ir', force_recalc:bool=False, ni_th:float=1.0)->AvgWdwCumulator:
+    def get_channel_avg_wdw_vectorized(self, this_pat_eeg_fpath, mtg_t:str='ir', force_recalc:bool=False, ni_th:float=1.0)->None:
         """
         This function cumulates for each channel and sleep stage, the windows that temporally coincide with a spike event coming from any channel.
 
@@ -475,11 +475,12 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         """
 
         eeg_reader = EEG_IO(eeg_filepath=this_pat_eeg_fpath, mtg_t=mtg_t)
+        sig_wdw_fs = int(eeg_reader.fs)
         spike_cumulator_fn = self.output_path / f"CumulatedSpikes/{eeg_reader.filename.replace(".dat", '_AvgWdwCumulator.pickle')}"
         if not os.path.isfile(spike_cumulator_fn) or force_recalc:
             print(this_pat_eeg_fpath.name)
             sleep_stages_ls = list(self.sleep_stages_map.values())
-            self.spike_cumulator = AvgWdwCumulator(eeg_channels_ls=eeg_reader.ch_names, sleep_stage_ls=sleep_stages_ls, sig_wdw_dur_s=1, sig_wdw_fs=64)
+            self.spike_cumulator = AvgWdwCumulator(eeg_channels_ls=eeg_reader.ch_names, sleep_stage_ls=sleep_stages_ls, sig_wdw_dur_s=1, sig_wdw_fs=sig_wdw_fs)
             fs = int(eeg_reader.fs)
             fs_us = self.spike_cumulator.get_undersampling_frequency()
 
@@ -490,6 +491,7 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
             
             start_indices = spk_df.start_sample.to_numpy()
             end_indices = spk_df.end_sample.to_numpy()
+            polarity_vec = spk_df.polarity.to_numpy()
             nr_total_spikes = len(spk_df.center_sample)
             if nr_total_spikes == 0:
                 self.save_spike_cumulator(filepath=spike_cumulator_fn)
@@ -503,7 +505,9 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                 all_channs_spike_signal = eeg_reader.get_data(start=spike_locs[0], stop=spike_locs[1])
                 for eeg_chi, ch_name in enumerate(eeg_reader.ch_names):
                     # Read the EEG segment containing a spike and undersample it
-                    undersampled_spike_wdws[eeg_chi, spike_idx] = self.undersample_signal(all_channs_spike_signal[eeg_chi], fs_us)
+                    #undersampled_spike_wdws[eeg_chi, spike_idx] = self.undersample_signal(all_channs_spike_signal[eeg_chi], fs_us)
+                    undersampled_spike_wdws[eeg_chi, spike_idx] = all_channs_spike_signal[eeg_chi]
+                    assert not np.any(undersampled_spike_wdws[eeg_chi, spike_idx] - all_channs_spike_signal[eeg_chi])
                     pass
                 
                 try:
@@ -516,9 +520,17 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                 for k, stage_name in self.sleep_stages_map.items():
                     spike_wdw_sel_indices = np.where(spk_df.stage_name==stage_name)
                     if len(spike_wdw_sel_indices[0])>0:
-                        stage_spike_wdws = np.abs(undersampled_spike_wdws[eeg_chi][spike_wdw_sel_indices])
-                        avg_spike = np.mean(stage_spike_wdws, axis=0)
-                        nr_spikes_in_avg = stage_spike_wdws.shape[0]
+                        stage_spikes_polarity = polarity_vec[spike_wdw_sel_indices]
+                        stage_spike_wdws = undersampled_spike_wdws[eeg_chi][spike_wdw_sel_indices]
+                        stage_spike_wdws = stage_spike_wdws * stage_spikes_polarity.reshape(-1, 1) # correct spike signals polarity
+                        for spk_sig_idx, spike_sig in enumerate(stage_spike_wdws):
+                            spike_sig_remove_dc = spike_sig - np.mean(spike_sig)
+                            stage_spike_wdws[spk_sig_idx] = spike_sig_remove_dc
+                            pass
+                        #stage_spike_wdws_abs = np.abs(stage_spike_wdws)
+                        stage_spike_wdws_abs = stage_spike_wdws
+                        avg_spike = np.mean(stage_spike_wdws_abs, axis=0)
+                        nr_spikes_in_avg = stage_spike_wdws_abs.shape[0]
                         self.spike_cumulator.add_spike(sleep_stage=stage_name, ch_name=ch_name, avg_spike_signal=avg_spike, nr_spikes=nr_spikes_in_avg)
                         pass
 
