@@ -69,7 +69,7 @@ if __name__ == "__main__":
     os.makedirs(output_path, exist_ok=True)
 
     studies_ls = [fr_ILAES2025_patients(), ACH_Pediatric_Patients(), ACH_Pediatric_Patients_Spike_Drive()]
-    studies_ls = [fr_ILAES2025_patients()]
+    studies_ls = [ACH_Pediatric_Patients(), ACH_Pediatric_Patients_Spike_Drive()]
     for study_info in studies_ls:
         print(f"Processing {study_info.dataset_name}...")
         #sleep_a_df = analyze_sleep_stages(study_info)

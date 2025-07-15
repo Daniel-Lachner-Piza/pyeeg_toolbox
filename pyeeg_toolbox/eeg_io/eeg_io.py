@@ -82,7 +82,7 @@ class EEG_IO:
             raise ValueError('Invalid montage type. Supported types are sr, sb, ir, ib.')
 
         self.filename = self.eeg_hdr.filenames[0].split(os.path.sep)[-1]
-        self.fs = self.eeg_hdr.info["sfreq"]
+        self.fs = int(np.round(self.eeg_hdr.info["sfreq"]))
         self.ch_names = self.get_ch_names()[0]
         self.ch_indices = self.get_ch_names()[1]
         self.data = []

@@ -203,13 +203,37 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                     return     
 
         ni_th = 1
-        parral_jobs_nr = 16
-        Parallel(n_jobs=parral_jobs_nr)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
+        parral_jobs_nr = -1
+        eeg_reader = EEG_IO(eeg_filepath=self.pat_files_ls[0], mtg_t=mtg_t)
+        eeg_fs = int(eeg_reader.fs)
 
-        #force_recalc = True
-        self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t, force_recalc=force_recalc)
+        if parral_jobs_nr != 1:
+            if eeg_fs > 256 and eeg_fs <= 512:
+                parral_jobs_nr = 16
+            elif eeg_fs > 512 and eeg_fs <= 1024:
+                parral_jobs_nr = 8
+            elif eeg_fs > 1024:
+                parral_jobs_nr = 4
 
-        self.get_overall_ch_stage_spike_amplitude(file_extension=file_extension, mtg_t=mtg_t)
+        try:
+            Parallel(n_jobs=parral_jobs_nr)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
+
+            #force_recalc = True
+            self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t, force_recalc=force_recalc)
+
+            self.get_overall_ch_stage_spike_amplitude(file_extension=file_extension, mtg_t=mtg_t)
+        except Exception as e:
+            print(f"Error during parallel processing: {e}")
+
+            try:
+                parral_jobs_nr = 2
+                Parallel(n_jobs=parral_jobs_nr)(delayed(self.get_channel_avg_wdw_vectorized)(this_eeg_fpath, mtg_t, force_recalc, ni_th=ni_th) for this_eeg_fpath in self.pat_files_ls)
+                #force_recalc = True
+                self.get_spike_occ_rate_by_sleep_stage(file_extension=file_extension, mtg_t=mtg_t, force_recalc=force_recalc)
+                self.get_overall_ch_stage_spike_amplitude(file_extension=file_extension, mtg_t=mtg_t)
+            except Exception as e:
+                print(f"Error during fallback processing: {e}")
+                return
 
         return
 
@@ -408,7 +432,7 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         spikes_center_sec_vec = spike_data_df['Time'].to_numpy()
         spikes_center_samples = (spikes_center_sec_vec*eeg_reader.fs).astype(int)
         spikes_start_samples = ((spikes_center_sec_vec-(spk_wdw_dur_s/2))*eeg_reader.fs).astype(int)
-        spikes_end_samples = ((spikes_center_sec_vec+(spk_wdw_dur_s/2))*eeg_reader.fs).astype(int)
+        spikes_end_samples = (spikes_start_samples + (spk_wdw_dur_s*eeg_reader.fs)).astype(int)
         
         # Delete invalid spike indices
         spikes_to_keep = np.logical_not(np.logical_or(spikes_start_samples<0, spikes_end_samples>=eeg_reader.n_samples))
@@ -475,13 +499,13 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
         """
 
         eeg_reader = EEG_IO(eeg_filepath=this_pat_eeg_fpath, mtg_t=mtg_t)
-        sig_wdw_fs = int(eeg_reader.fs)
+        sig_wdw_fs = eeg_reader.fs
         spike_cumulator_fn = self.output_path / f"CumulatedSpikes/{eeg_reader.filename.replace(".dat", '_AvgWdwCumulator.pickle')}"
         if not os.path.isfile(spike_cumulator_fn) or force_recalc:
             print(this_pat_eeg_fpath.name)
             sleep_stages_ls = list(self.sleep_stages_map.values())
             self.spike_cumulator = AvgWdwCumulator(eeg_channels_ls=eeg_reader.ch_names, sleep_stage_ls=sleep_stages_ls, sig_wdw_dur_s=1, sig_wdw_fs=sig_wdw_fs)
-            fs = int(eeg_reader.fs)
+            fs = eeg_reader.fs
             fs_us = self.spike_cumulator.get_undersampling_frequency()
 
             spike_wdw_indices, spk_df = self.get_detailed_spike_event(this_pat_eeg_fpath, eeg_reader)
@@ -503,6 +527,8 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
             undersampled_spike_wdws = np.zeros((len(eeg_reader.ch_names), nr_total_spikes, fs_us))
             for spike_idx, spike_locs in enumerate(zip(start_indices, end_indices)):
                 all_channs_spike_signal = eeg_reader.get_data(start=spike_locs[0], stop=spike_locs[1])
+
+                # under sample the spike signal to the desired frequency
                 for eeg_chi, ch_name in enumerate(eeg_reader.ch_names):
                     # Read the EEG segment containing a spike and undersample it
                     #undersampled_spike_wdws[eeg_chi, spike_idx] = self.undersample_signal(all_channs_spike_signal[eeg_chi], fs_us)
@@ -524,8 +550,7 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                         stage_spike_wdws = undersampled_spike_wdws[eeg_chi][spike_wdw_sel_indices]
                         stage_spike_wdws = stage_spike_wdws * stage_spikes_polarity.reshape(-1, 1) # correct spike signals polarity
                         for spk_sig_idx, spike_sig in enumerate(stage_spike_wdws):
-                            spike_sig_remove_dc = spike_sig - np.mean(spike_sig)
-                            stage_spike_wdws[spk_sig_idx] = spike_sig_remove_dc
+                            stage_spike_wdws[spk_sig_idx] = spike_sig - np.mean(spike_sig)
                             pass
                         #stage_spike_wdws_abs = np.abs(stage_spike_wdws)
                         stage_spike_wdws_abs = stage_spike_wdws

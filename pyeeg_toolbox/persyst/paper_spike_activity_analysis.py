@@ -172,7 +172,7 @@ class Spike_Activity_Analyzer:
         scaled_spike_data_df = pd.DataFrame()
         for pdata_fn in pats_ls:
             pdata_df = spike_data_df[spike_data_df.Patient.str.fullmatch(pdata_fn, case=False)].reset_index(drop=True).copy()
-            pdata_df.Amplitude = MinMaxScaler().fit_transform(pdata_df.Amplitude.values.reshape(-1, 1)) # MinMaxScaler, StandardScaler()
+            pdata_df.Amplitude = StandardScaler().fit_transform(pdata_df.Amplitude.values.reshape(-1, 1)) # MinMaxScaler, StandardScaler()
             scaled_spike_data_df = pd.concat([scaled_spike_data_df, pdata_df])
 
         return scaled_spike_data_df
@@ -768,11 +768,10 @@ class Spike_Activity_Analyzer:
         plt.savefig(self.images_output_path / "Spike_Activity_Wilcoxon_Test_Results.png")
         plt.close()
 
-    def plot_group_sleep_stage_durations(self, stage_duration_spike_rate_df:pd.DataFrame=None):
+    def plot_group_sleep_stage_durations_piechart(self, stage_duration_spike_rate_df:pd.DataFrame=None):
         nr_pats = len(stage_duration_spike_rate_df.PatID.unique())
 
-        #sleep_ref_img_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\pyeeg_toolbox\\persyst\\SleepStages_Reference.png")
-        sleep_ref_img_path = os.getcwd()+'/pyeeg_toolbox/persyst/SleepStages_Reference.png'
+        sleep_ref_img_path = Path.cwd()/'pyeeg_toolbox/persyst/SleepStages_Reference.png'
         sleep_ref_img= Image.open(sleep_ref_img_path)
         rsz_ratio = 2
         img_rsz = (int(sleep_ref_img.size[0]/rsz_ratio), int(sleep_ref_img.size[1]/rsz_ratio))
@@ -811,6 +810,65 @@ class Spike_Activity_Analyzer:
         plt.savefig(self.images_output_path / "Duration_Of_Sleep_Stages.png")
         #plt.waitforbuttonpress()
         plt.close()
+
+    def plot_group_sleep_stage_durations_barchart(self, stage_duration_spike_rate_orig_df:pd.DataFrame=None):
+        
+        nr_pats = len(stage_duration_spike_rate_orig_df.PatID.unique())
+
+        fig, all_axs = plt.subplots(1, 2, figsize=FIGSIZE)
+        
+        stage_duration_spike_rate_df = stage_duration_spike_rate_orig_df.copy()
+        axs = all_axs[0]
+        to_plot_stage_names = ['N3', 'N2', 'N1', 'REM']
+        stage_duration_spike_rate_df['StageDurH'] = stage_duration_spike_rate_df.StageDurM / 60.0 # convert to hours
+        to_plot_stage_sel = stage_duration_spike_rate_df.Stage.isin(to_plot_stage_names)
+        stage_duration_spike_rate_df = stage_duration_spike_rate_df[to_plot_stage_sel].reset_index(drop=True).copy()
+        to_plot_stages_colors = [self.stages_colors[k] for k in to_plot_stage_names]
+        assert nr_pats == len(stage_duration_spike_rate_df.PatID.unique()), "More than one entry per patient"
+        bp_ax = sns.barplot(data=stage_duration_spike_rate_df, x='Stage', y='StageDurH', hue='Stage', palette=to_plot_stages_colors, ax=axs,
+            capsize=.2,
+            errorbar='sd',
+            err_kws={'color': 'k', "linestyle":'dashed', "linewidth": 2, "alpha": 0.6},
+            linewidth=1, edgecolor=".5", width=0.5, gap=0.1
+            )
+        for cont in bp_ax.containers:
+            plt.bar_label(cont, fmt='%.2f', fontsize=32, label_type='edge', padding=3, color='black', weight='bold')
+        axs.set_ylabel("Spikes / electrode / min.", fontsize=32)
+        axs.set_xlabel("Sleep Stage", fontsize=32)
+        plt.xticks(fontsize=32)
+        plt.yticks(fontsize=32)
+
+
+        axs = all_axs[1]
+        to_plot_stage_names = ['N2', 'N1', 'REM', 'Wake']
+        stage_duration_spike_rate_df = stage_duration_spike_rate_orig_df.copy()
+        stage_duration_spike_rate_df['StageDurH'] = stage_duration_spike_rate_df.StageDurM / 60.0 # convert to hours
+        to_plot_stage_sel = stage_duration_spike_rate_df.Stage.isin(to_plot_stage_names)
+        stage_duration_spike_rate_df = stage_duration_spike_rate_df[to_plot_stage_sel].reset_index(drop=True).copy()
+        to_plot_stages_colors = [self.stages_colors[k] for k in to_plot_stage_names]
+        assert nr_pats == len(stage_duration_spike_rate_df.PatID.unique()), "More than one entry per patient"
+        bp_ax = sns.barplot(data=stage_duration_spike_rate_df, x='Stage', y='StageDurH', hue='Stage', palette=to_plot_stages_colors, ax=axs,
+            capsize=.2,
+            errorbar='sd',
+            err_kws={'color': 'k', "linestyle":'dashed', "linewidth": 2, "alpha": 0.6},
+            linewidth=1, edgecolor=".5", width=0.5, gap=0.1
+            )
+        
+        for cont in bp_ax.containers:
+            plt.bar_label(cont, fmt='%.2f', fontsize=32, label_type='edge', padding=3, color='black', weight='bold')
+        axs.set_ylabel("Spikes / electrode / min.", fontsize=32)
+        axs.set_xlabel("Sleep Stage", fontsize=32)
+        plt.xticks(fontsize=32)
+        plt.yticks(fontsize=32)
+
+        plt.suptitle(f"{self.study_name}", fontsize=48)
+
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.tight_layout()
+        plt.savefig(self.images_output_path / "Average_Spike_OccRate.png")
+        #plt.waitforbuttonpress()
+        plt.close()
+        
 
     def plot_individual_sleep_stage_durations(self, stage_duration_spike_rate_df:pd.DataFrame=None):
 
@@ -1137,7 +1195,7 @@ if __name__ == "__main__":
 
     # Predict SOZ based on Spike Activity
     studies_ls =  [fr_ILAES2025_patients(), ACH_Pediatric_Patients_All()]
-    #studies_ls =  [ACH_Pediatric_Patients_All()]
+    studies_ls =  [fr_ILAES2025_patients()]
 
     prediction_results_ls = []
     for study in studies_ls:
@@ -1154,8 +1212,10 @@ if __name__ == "__main__":
 
         pats_ls = list(study.patients.keys())
 
-        characterization_datapath = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Vectorized_WdwAn_Output\\Spike_Characterized_Channels")
-        stages_spikes_duration_rate_datapath = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Vectorized_WdwAn_Output\\Stage_Spike_Occurrence_Rate")
+        pyeeg_output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Vectorized_WdwAn_Output")
+        pyeeg_output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Vectorized_WdwAn_Output_Polarity_Corrected")
+        characterization_datapath = pyeeg_output_path / "Spike_Characterized_Channels"
+        stages_spikes_duration_rate_datapath = pyeeg_output_path / "Stage_Spike_Occurrence_Rate"
 
         an_sleep_stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
         stages_colors = {'N1':(250,223,99), 'N2':(41,232,178), 'N3':(76,169,238), 'REM':(47,69,113), 'Wake':(224,115,120), 'Unknown':(128,128,128)}
@@ -1166,7 +1226,8 @@ if __name__ == "__main__":
 
         # Read and analyze sleep stages and spike occurrence rate data
         stage_duration_spike_rate_df = spike_analyzer.read_stages_duration_and_spike_rates()
-        spike_analyzer.plot_group_sleep_stage_durations(stage_duration_spike_rate_df)
+        #spike_analyzer.plot_group_sleep_stage_durations_piechart(stage_duration_spike_rate_df)
+        spike_analyzer.plot_group_sleep_stage_durations_barchart(stage_duration_spike_rate_df)
         spike_analyzer.plot_individual_sleep_stage_durations(stage_duration_spike_rate_df)
         spike_analyzer.plot_spike_occ_rate(stage_duration_spike_rate_df)
         spike_analyzer.analyze_spike_occ_rate_wake_sleep(stage_duration_spike_rate_df)
