@@ -535,47 +535,51 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
 
             assert len(start_indices)==len(end_indices), f"Start and end indices do not match for {this_pat_eeg_fpath.name}"
 
-            # # 1. Read the EEG one hour at a time and extract the spike windows
-            # # This is done to avoid memory issues when processing large EEG files
-            # spike_wdws = np.zeros((len(eeg_reader.ch_names), nr_total_spikes, fs_us))
-            # for hour_start in range(0, eeg_reader.n_samples, eeg_reader.fs * 3600):
-            #     hour_stop = min(hour_start + eeg_reader.fs * 3600, eeg_reader.n_samples)
-            #     all_ch_sigs = eeg_reader.get_data(start=hour_start, stop=hour_stop)
-            #     for spike_idx, spike_locs in enumerate(zip(start_indices, end_indices)):
-            #         if spike_locs[0] < hour_start or spike_locs[1] > hour_stop:
-            #             continue
-            #         try:
-            #             spike_wdws[:, spike_idx, :] = all_ch_sigs[:, spike_locs[0]-hour_start:spike_locs[1]-hour_start]
-            #         except ValueError as e:
-            #             print(f"Error processing spike window for {this_pat_eeg_fpath.name} at index {spike_idx}: {e}")
-            #             continue
-
-            #     # Show progress
-            #     try:
-            #         if hour_start % int(eeg_reader.fs * 3600) == 0:
-            #             print(f"{this_pat_eeg_fpath.name} = {hour_start / eeg_reader.n_samples * 100:.2f}%")
-            #     except ZeroDivisionError:
-            #         pass
-
-            # 2. Read the EEG data containing spikes and extract the spike windows
-            #all_ch_sigs = eeg_reader.get_data()
+            ###
+            # 1. Read the EEG one hour at a time and extract the spike windows
+            # This is done to avoid memory issues when processing large EEG files
             spike_wdws = np.zeros((len(eeg_reader.ch_names), nr_total_spikes, fs_us))
-            for spike_idx, spike_locs in enumerate(zip(start_indices, end_indices)):
-                all_channs_spike_signal = eeg_reader.get_data(start=spike_locs[0], stop=spike_locs[1])
+            for hour_start in range(0, eeg_reader.n_samples, eeg_reader.fs * 3600):
+                hour_stop = min(hour_start + eeg_reader.fs * 3600, eeg_reader.n_samples)
+                all_ch_sigs = eeg_reader.get_data(start=hour_start, stop=hour_stop)
+                for spike_idx, spike_locs in enumerate(zip(start_indices, end_indices)):
+                    if spike_locs[0] < hour_start or spike_locs[1] > hour_stop:
+                        continue
+                    try:
+                        spike_wdws[:, spike_idx, :] = all_ch_sigs[:, spike_locs[0]-hour_start:spike_locs[1]-hour_start]
+                    except ValueError as e:
+                        print(f"Error processing spike window for {this_pat_eeg_fpath.name} at index {spike_idx}: {e}")
+                        continue
 
-                # under sample the spike signal to the desired frequency
-                for eeg_chi, ch_name in enumerate(eeg_reader.ch_names):
-                    # Read the EEG segment containing a spike and undersample it
-                    #spike_wdws[eeg_chi, spike_idx] = self.undersample_signal(all_channs_spike_signal[eeg_chi], fs_us)
-                    spike_wdws[eeg_chi, spike_idx] = all_channs_spike_signal[eeg_chi]
-                    assert not np.any(spike_wdws[eeg_chi, spike_idx] - all_channs_spike_signal[eeg_chi])
-                    pass
-                
+                # Show progress
                 try:
-                    if spike_idx%int(nr_total_spikes/100) == 0:
-                        print(f"{this_pat_eeg_fpath.name} = {(spike_idx+1)/nr_total_spikes*100:.2f}%")
+                    if hour_start % int(eeg_reader.fs * 3600) == 0:
+                        print(f"{this_pat_eeg_fpath.name} = {hour_start / eeg_reader.n_samples * 100:.2f}%")
                 except ZeroDivisionError:
                     pass
+            ###
+
+            # ###
+            # # 2. Read the EEG data containing spikes and extract the spike windows
+            # #all_ch_sigs = eeg_reader.get_data()
+            # spike_wdws = np.zeros((len(eeg_reader.ch_names), nr_total_spikes, fs_us))
+            # for spike_idx, spike_locs in enumerate(zip(start_indices, end_indices)):
+            #     all_channs_spike_signal = eeg_reader.get_data(start=spike_locs[0], stop=spike_locs[1])
+
+            #     # under sample the spike signal to the desired frequency
+            #     for eeg_chi, ch_name in enumerate(eeg_reader.ch_names):
+            #         # Read the EEG segment containing a spike and undersample it
+            #         #spike_wdws[eeg_chi, spike_idx] = self.undersample_signal(all_channs_spike_signal[eeg_chi], fs_us)
+            #         spike_wdws[eeg_chi, spike_idx] = all_channs_spike_signal[eeg_chi]
+            #         assert not np.any(spike_wdws[eeg_chi, spike_idx] - all_channs_spike_signal[eeg_chi])
+            #         pass
+                
+            #     try:
+            #         if spike_idx%int(nr_total_spikes/100) == 0:
+            #             print(f"{this_pat_eeg_fpath.name} = {(spike_idx+1)/nr_total_spikes*100:.2f}%")
+            #     except ZeroDivisionError:
+            #         pass
+            # ###
                     
             for eeg_chi, ch_name in enumerate(eeg_reader.ch_names):
                 for k, stage_name in self.sleep_stages_map.items():

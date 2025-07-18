@@ -76,7 +76,6 @@ if __name__ == "__main__":
     #output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Output_HandleOffset_CorrectPolarity_YesAbsValue")
     output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Output_HandleOffset_CorrectPolarity_NoAbsValue")
     output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Output_HandleOffset_CorrectPolarity_NoAbsValue_Accelerated")
-    output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Output_HandleOffset_CorrectPolarity_NoAbsValue_Slow")
 
     os.makedirs(output_path, exist_ok=True)
 
