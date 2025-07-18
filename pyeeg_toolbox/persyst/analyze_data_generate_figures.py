@@ -115,26 +115,7 @@ class Spike_Activity_Analyzer:
                 stage_duration_spike_rate_df = pd.concat([stage_duration_spike_rate_df, pdata_df])
             except:
                 print(f"File {pdata_fn} not found")
-
         stage_duration_spike_rate_df.reset_index(drop=True, inplace=True)
-
-        # Analyze the data
-        stages_ls  = stage_duration_spike_rate_df.Stage.unique().tolist()
-        data_analysis_dict = {
-            'Stage': [],
-            'Avg': [],
-            'StdDev': [],
-        }
-        # print('\nStageDurHours (Avg, StdDev)')
-        # for stage_name in stages_ls:
-        #     stage_sel = stage_duration_spike_rate_df.Stage==stage_name
-        #     assert stage_sel.sum() == nr_pats, "More than one entry per patient"
-        #     data_analysis_dict['Stage'].append(stage_name)
-        #     data_analysis_dict['Avg'].append(stage_duration_spike_rate_df.StageDurM[stage_sel].mean()/60)
-        #     data_analysis_dict['StdDev'].append(stage_duration_spike_rate_df.StageDurM[stage_sel].std()/60)
-        #     print(f"{stage_name}: {data_analysis_dict['Avg'][-1]:.2f} (std.dev.: {data_analysis_dict['StdDev'][-1]:.2f}) hours")
-        #     pass
-
         return stage_duration_spike_rate_df
 
     def handle_patient_outliers(self, spike_data_df:pd.DataFrame=None):
@@ -276,19 +257,6 @@ class Spike_Activity_Analyzer:
         #print(res_dict) 
         pass
 
-    def oversample_patients(self, train_set_df):
-        os_train_set_df = pd.DataFrame()
-        for pat_id in train_set_df.Patient.unique():
-            pat_df = train_set_df[train_set_df.Patient==pat_id]
-            soz_df = pat_df[pat_df.SOZ=='SOZ']
-            non_soz_df = pat_df[pat_df.SOZ=='Non-SOZ']
-            n_p_ratio = int(np.round(len(non_soz_df)/len(soz_df)))+1
-            if n_p_ratio>=2:
-                soz_df = pd.concat([soz_df]*n_p_ratio)
-            os_train_set_df = pd.concat([os_train_set_df, soz_df, non_soz_df])
-        os_train_set_df = os_train_set_df.sample(frac=1).reset_index(drop=True)
-        return os_train_set_df
-
     def predict_soz_with_spike_activity(self, spike_data_df:pd.DataFrame=None, add_features:bool=False):
         
         nr_pats = len(spike_data_df.Patient.unique())
@@ -317,11 +285,6 @@ class Spike_Activity_Analyzer:
             for pidx, pat_id in enumerate(stage_data_df.Patient.unique()):
                 train_set_df = stage_data_df[stage_data_df.Patient!=pat_id]
                 test_set_df = stage_data_df[stage_data_df.Patient==pat_id]
-
-                # Oversample to have equal positives and negatives
-                #train_set_df = self.oversample_patients(train_set_df)
-                # print class imbalance
-                #print(f"Patient {pat_id} - Train Set Class Ratio: {np.sum(train_set_df.SOZ =='SOZ')/len(train_set_df)*100:.2f}%")
 
                 X_train = train_set_df.Amplitude.to_numpy().reshape(-1, 1)
                 y_train = train_set_df.SOZ.to_numpy()=='SOZ'
@@ -675,112 +638,6 @@ class Spike_Activity_Analyzer:
         pass
        
     
-    def plot_per_stage_spike_activity(self, spike_data_df:pd.DataFrame=None):
-        
-        spike_data_df_plot = spike_data_df.copy() 
-        spike_data_df_plot.loc[:, 'Amplitude'] = spike_data_df_plot.Amplitude.values*1000*1000 # convert to uV
-        nr_pats = len(spike_data_df.Patient.unique())
-
-
-        print("Spike Activity per Sleep Stage")
-        print(f"Nr. Patients: {nr_pats}")
-        
-        # Plot Spike Activity
-        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
-        ax=axs
-        box_plot = sns.boxplot(data=spike_data_df_plot, x='Stage', y='Amplitude', hue='Stage', palette=self.stages_colors, showfliers=False, ax=ax)
-        medians_df = spike_data_df_plot[['Stage', 'Amplitude']].groupby(['Stage']).median().reset_index()
-        stages_ls = spike_data_df_plot.Stage.unique().tolist()
-        for xtick in box_plot.get_xticks():
-            median_val = medians_df.Amplitude[medians_df.Stage==stages_ls[xtick]].to_numpy()[0]
-            median_str = f"{median_val:.2f}"
-            box_plot.text(x= xtick, y=median_val, s=median_str, horizontalalignment='center',size=32, color='w', weight='semibold') # size=10
-            pass
-        #box_plot.text(x=box_plot.get_xticks()[-1], y=0.95, s=f"Repeated Measures Anova p_val: {p_val_rmanova:.2f}", horizontalalignment='center',size=14,color='r',weight='bold')
-
-        plt.ylabel("Spike Activity (uV)", fontsize=32)
-        plt.xlabel("Sleep Stage", fontsize=32)
-        plt.title(f"{self.study_name}", fontsize=48)
-        plt.xticks(fontsize=32)
-        plt.yticks(fontsize=32)
-        #plt.ylim(0, 100)
- 
-        plt.get_current_fig_manager().full_screen_toggle()
-        plt.tight_layout()
-        plt.savefig(self.images_output_path / "Average_Spike_Activity.png")
-        #plt.waitforbuttonpress()
-        plt.close()
-
-        pass
-
-    def analyze_spike_activity_stages_differences(self, spike_data_df:pd.DataFrame=None):
-        patients_ls = list(spike_data_df.Patient.unique())
-        nr_pats = len(patients_ls)
-
-
-# Analyze Spike Occurrence Rate
-        stages_ls  = stage_duration_spike_rate_df.Stage.unique().tolist()
-        data_analysis_dict = {
-            'Stage': [],
-            'Avg': [],
-            'StdDev': [],
-        }
-    
-        # Analyze Spike Activity
-        stages_ls  = spike_data_df.Stage.unique().tolist()
-        print('\nSpikeActivity (Avg, StdDev)')
-        test_results = np.ones((len(stages_ls),len(stages_ls)))
-        for ia, stage_name_a in enumerate(stages_ls):
-            stage_sel_a = spike_data_df.Stage==stage_name_a
-            spike_activity_a = spike_data_df.Amplitude[stage_sel_a].to_numpy()
-            spike_activity_a = spike_data_df[stage_sel_a][['Patient', 'Amplitude']].groupby('Patient').median().values.flatten()*1000*1000
-
-            data_analysis_dict['Stage'].append(stage_name_a)
-            data_analysis_dict['Avg'].append(np.mean(spike_activity_a))
-            data_analysis_dict['StdDev'].append(np.std(spike_activity_a))
-            print(f"{stage_name_a}: {data_analysis_dict['Avg'][-1]:.2f} (std.dev.: {data_analysis_dict['StdDev'][-1]:.2f}) µV")
-
-            for ib, stage_name_b in enumerate(stages_ls):
-                stage_sel_b = spike_data_df.Stage==stage_name_b
-                spike_activity_b = spike_data_df.Amplitude[stage_sel_b].to_numpy()
-                spike_activity_b = spike_data_df[stage_sel_b][['Patient', 'Amplitude']].groupby('Patient').median().values.flatten()*1000*1000
-
-                assert len(spike_activity_a) == len(spike_activity_b), "Spike rates for different stages have different lengths"
-
-                # run Wilcoxon signed-rank test
-                if ia != ib:
-                    wilcoxon_stat, wilcoxon_p_val = stats.wilcoxon(spike_activity_a, spike_activity_b, nan_policy='raise', alternative='two-sided')
-                    #print(f"Spike Activity {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
-                    test_results[ia,ib] = wilcoxon_p_val
-                    # run paired t-test
-                    t_stat, p_val = stats.ttest_rel(spike_activity_a, spike_activity_b, nan_policy='raise', alternative='two-sided')
-                    #print(f"Spike Activity {stage_name_a} vs {stage_name_b}\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
-                pass
-        pass
-
-        # Create a mask
-        mask = np.triu(np.ones_like(test_results, dtype=bool))
-        threshold = 0.05 / ((len(stages_ls) * (len(stages_ls) - 1))/2)  # Bonferroni correction for multiple comparisons
-        threshold = 0.05 / (len(stages_ls)-1)  # Bonferroni correction for multiple comparisons
-        print(f"Bonferroni corrected threshold: {threshold:.3f}")
-                             
-        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
-        ax = sns.heatmap(test_results, vmin=0, vmax=threshold, center=threshold, mask=mask, cmap='coolwarm', annot=True, fmt=".3f", annot_kws={"size": 32}, linewidths=.5, linecolor='white', cbar_kws={"shrink": .8},ax=axs)
-        cbar = ax.collections[0].colorbar
-        # Adjust the font size of the colorbar tick labels
-        cbar.ax.tick_params(labelsize=32) # Set specific font size
-        cbar.set_label('p value', fontsize=32) # Set colorbar label
-
-        #ax = sns.heatmap(test_results, mask=mask, center=0, annot=True, fmt='.2f', square=True, cmap=cmap)
-        ax.grid(False)
-        ax.set_xticklabels(stages_ls, rotation=45, fontsize=32)
-        ax.set_yticklabels(stages_ls, rotation=0, fontsize=32)
-        alpha_str = r" $\alpha$"        
-        plt.title(f"Spike Activity\nWilcoxon Signed-Rank Test p-values\n({alpha_str}:{threshold})", fontsize=36)
-        plt.get_current_fig_manager().full_screen_toggle()
-        plt.tight_layout()
-        plt.savefig(self.images_output_path / "Spike_Activity_Wilcoxon_Test_Results.png")
-        plt.close()
 
     def plot_group_sleep_stage_durations_piechart(self, stage_duration_spike_rate_df:pd.DataFrame=None):
         nr_pats = len(stage_duration_spike_rate_df.PatID.unique())
@@ -830,7 +687,7 @@ class Spike_Activity_Analyzer:
         nr_pats = len(stage_duration_spike_rate_orig_df.PatID.unique())
         all_pats_eeg_durations = (stage_duration_spike_rate_orig_df[['PatID', 'StageDurM']].groupby('PatID').sum()/60).to_numpy().flatten()
         ci_range = self.bootstrap_confidence_interval_univariate(all_pats_eeg_durations)
-        print(f"\nAwareness Stages Duration")
+        print(f"\n\nAwareness Stages Duration")
         print(f"Nr. Patients: {nr_pats}")
         print(f"All patients avg. EEG duration: {np.mean(all_pats_eeg_durations):.2f} h(IQR={np.percentile(all_pats_eeg_durations, 75) - np.percentile(all_pats_eeg_durations, 25):.2f})")
         print(f"CI Range for all patients' EEG duration: {ci_range[0]:.2f} - {ci_range[1]:.2f} hours")
@@ -860,7 +717,8 @@ class Spike_Activity_Analyzer:
         to_plot_stages_colors = [self.stages_colors[k] for k in to_plot_stage_names]
         assert nr_pats == len(stage_duration_spike_rate_df.PatID.unique()), "More than one entry per patient"
         axs = all_axs[0]
-        bp_ax = sns.barplot(data=stage_duration_spike_rate_df, x='Stage', y='StageDurH', hue='Stage', palette=to_plot_stages_colors, ax=axs,
+        bp_ax = sns.barplot(data=stage_duration_spike_rate_df, x='Stage', y='StageDurH', hue='Stage',
+            order=to_plot_stage_names, palette=self.stages_colors, ax=axs,
             capsize=.2,
             errorbar=errorbar_def,
             err_kws=errorbar_characteristics,
@@ -884,7 +742,8 @@ class Spike_Activity_Analyzer:
         stage_duration_spike_rate_df = stage_duration_spike_rate_df[to_plot_stage_sel].reset_index(drop=True).copy()
         to_plot_stages_colors = [self.stages_colors[k] for k in to_plot_stage_names]
         assert nr_pats == len(stage_duration_spike_rate_df.PatID.unique()), "More than one entry per patient"
-        bp_ax = sns.barplot(data=stage_duration_spike_rate_df, x='Stage', y='StageDurH', hue='Stage', palette=to_plot_stages_colors, ax=axs,
+        bp_ax = sns.barplot(data=stage_duration_spike_rate_df, x='Stage', y='StageDurH', hue='Stage', 
+            order=to_plot_stage_names, palette=to_plot_stages_colors, ax=axs,
             capsize=.2,
             errorbar=errorbar_def,
             err_kws=errorbar_characteristics,
@@ -956,8 +815,10 @@ class Spike_Activity_Analyzer:
 
     def plot_spike_occ_rate(self, stage_duration_spike_rate_df:pd.DataFrame=None):
 
-        print(f"\n\nSpike Occurrence Rate")
         nr_pats = len(stage_duration_spike_rate_df.PatID.unique())
+        print(f"\n\nSpike Occurrence Rate")
+        print(f"Nr. Patients: {nr_pats}")
+
         # Analyze Spike Occurrence Rate
         stages_ci_ranges = {}
         for stage_name in stage_duration_spike_rate_df.Stage.unique():
@@ -973,13 +834,16 @@ class Spike_Activity_Analyzer:
                 normality = "not normal"
             print(f"{normality} -- {stage_name} ({np.mean(all_pats_sor):.2f}, CI={ci_range[0]:.2f}-{ci_range[1]:.2f}) (Spikes / electrode / min.)")
             pass
+        
+        max_ci_limit = max([max(v) for k,v in stages_ci_ranges.items()])
 
         # Plot Spike Occurrence Rate
         fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
         assert nr_pats == len(stage_duration_spike_rate_df.PatID.unique()), "More than one entry per patient"
         errorbar_def = ("ci", 95)  # Percentile interval for error bars
         errorbar_characteristics = {'color': 'red', "linestyle":'-', "linewidth": 5, "alpha": 0.6}
-        bp_ax = sns.barplot(data=stage_duration_spike_rate_df, x='Stage', y='SpikeOccRate', hue='Stage', palette=self.stages_colors, ax=axs,
+        bp_ax = sns.barplot(data=stage_duration_spike_rate_df, x='Stage', y='SpikeOccRate', hue='Stage',
+            order=self.sleep_stages_ls, palette=self.stages_colors, ax=axs,
             capsize=.2,
             errorbar=errorbar_def,
             err_kws=errorbar_characteristics,
@@ -992,6 +856,7 @@ class Spike_Activity_Analyzer:
         axs.set_xlabel("Sleep Stage", fontsize=32)
         plt.xticks(fontsize=32)
         plt.yticks(fontsize=32)
+        plt.ylim(0, max_ci_limit*1.1)
         #axs.set_title(f"{self.study_name}\nSpike Occ.Rate/min.\nNr.Patients = {nr_pats}", fontsize=48)
         axs.set_title(f"{self.study_name}", fontsize=48)
 
@@ -1001,174 +866,67 @@ class Spike_Activity_Analyzer:
         #plt.waitforbuttonpress()
         plt.close()
 
-    def analyze_spike_occ_rate_wake_sleep(self, stage_duration_spike_rate_df:pd.DataFrame=None):
-        # Analyze Differences in Spike Occurrence Rate between Sleep Stages
-        print(f"\n\nSpike Occurrence Rate Differences between Sleep Stages")
-        patients_ls = list(stage_duration_spike_rate_df.PatID.unique())
-        nr_pats = len(patients_ls)
-        
-        # Analyze Spike Occurrence Rate
-        stages_ls  = stage_duration_spike_rate_df.Stage.unique().tolist()
-        data_analysis_dict = {
-            'Stage': [],
-            'Avg': [],
-            'StdDev': [],
-        }
-        print('\nSpikeOccRate (Avg, StdDev)')
-        test_results = np.ones((len(stages_ls),len(stages_ls)))
-        for ia, stage_name_a in enumerate(stages_ls):
-            stage_sel_a = stage_duration_spike_rate_df.Stage==stage_name_a
-            spike_rate_a = stage_duration_spike_rate_df.SpikeOccRate[stage_sel_a].to_numpy()
-            assert stage_sel_a.sum() == nr_pats, "More than one entry per patient"
-            for ib, stage_name_b in enumerate(stages_ls):
-                stage_sel_b = stage_duration_spike_rate_df.Stage==stage_name_b
-                assert stage_sel_b.sum() == nr_pats, "More than one entry per patient"
-                spike_rate_b = stage_duration_spike_rate_df.SpikeOccRate[stage_sel_b].to_numpy()
-                assert len(spike_rate_a) == len(spike_rate_b), "Spike rates for different stages have different lengths"
+    def plot_per_stage_spike_activity(self, spike_data_df:pd.DataFrame=None):
 
-                # run Wilcoxon signed-rank test
-                if ia != ib:
-                    wilcoxon_stat, wilcoxon_p_val = stats.wilcoxon(spike_rate_a, spike_rate_b, nan_policy='raise', alternative='two-sided')
-                    #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
-                    test_results[ia,ib] = wilcoxon_p_val
-                    # run paired t-test
-                    t_stat, p_val = stats.ttest_rel(spike_rate_a, spike_rate_b, nan_policy='raise', alternative='two-sided')
-                    #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
-                pass
-        pass
+        plot_spike_data_df = spike_data_df.copy()
+        # Convert Amplitude to uV
+        plot_spike_data_df.loc[:, 'Amplitude'] = plot_spike_data_df.Amplitude.values*1000*1000 # convert to uV
+        # Get average spike activity per stage for each patient
+        all_pats_avg_stage_activity = plot_spike_data_df[['Patient', 'Stage', 'Amplitude']].groupby(['Patient','Stage']).mean().reset_index()
 
-        # Create a mask
-        mask = np.triu(np.ones_like(test_results, dtype=bool))
-        threshold = 0.05 / ((len(stages_ls) * (len(stages_ls) - 1))/2)  # Bonferroni correction for multiple comparisons
-        threshold = 0.05 / (len(stages_ls)-1)  # Bonferroni correction for multiple comparisons
-        print(f"Bonferroni corrected threshold: {threshold:.3f}")
-                             
-        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
-        ax = sns.heatmap(test_results, vmin=0, vmax=threshold, center=threshold, mask=mask, cmap='coolwarm', annot=True, fmt=".3f", annot_kws={"size": 32}, linewidths=.5, linecolor='white', cbar_kws={"shrink": .8},ax=axs)
-        cbar = ax.collections[0].colorbar
-        # Adjust the font size of the colorbar tick labels
-        cbar.ax.tick_params(labelsize=32) # Set specific font size
-        cbar.set_label('p value', fontsize=32) # Set colorbar label
+        nr_pats = len(all_pats_avg_stage_activity.Patient.unique())
+        print("\n\nPlotting Spike Activity per Sleep Stage")
+        print(f"Nr. Patients: {nr_pats}")
 
-        #ax = sns.heatmap(test_results, mask=mask, center=0, annot=True, fmt='.2f', square=True, cmap=cmap)
-        ax.grid(False)
-        ax.set_xticklabels(stages_ls, rotation=45, fontsize=32)
-        ax.set_yticklabels(stages_ls, rotation=0, fontsize=32)
-        alpha_str = r" $\alpha$"        
-        plt.title(f"Spike Occurrence Rate\nWilcoxon Signed-Rank Test p-values\n({alpha_str}:{threshold})", fontsize=36)
-        plt.get_current_fig_manager().full_screen_toggle()
-        plt.tight_layout()
-        plt.savefig(self.images_output_path / "Spike_OccRate_Wilcoxon_Test_Results.png")
-        plt.close()
-
-
-        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
-        # Plot Wake vs Sleep Spike Occurrence Rate using line plot with marker
-        patient_occ_rates = {'Patient':[], 'PatIdx':[], 'StageName':[], 'OccRate':[]}
-        for idx, patient in enumerate(patients_ls):
-            patient_data_df = stage_duration_spike_rate_df[stage_duration_spike_rate_df.PatID.str.fullmatch(patient, case=False)].reset_index(drop=True).copy()
-            
-            wake_rate = patient_data_df[patient_data_df.Stage=='Wake'].SpikeOccRate.mean()
-            sel_sleep = np.logical_or.reduce((
-                patient_data_df.Stage.str.fullmatch('N1', case=False),
-                patient_data_df.Stage.str.fullmatch('N2', case=False),
-                patient_data_df.Stage.str.fullmatch('N3', case=False),
-                patient_data_df.Stage.str.fullmatch('REM', case=False),
-            ))
-            sleep_rate = patient_data_df.loc[sel_sleep, 'SpikeOccRate'].mean()
-            patient_occ_rates['Patient'].append(patient)
-            patient_occ_rates['PatIdx'].append(idx)
-            patient_occ_rates['StageName'].append('Sleep')
-            patient_occ_rates['OccRate'].append(sleep_rate)
-            
-            for sleep_stage_name in self.sleep_stages_ls:
-                patient_occ_rates['Patient'].append(patient)
-                patient_occ_rates['PatIdx'].append(idx)
-                patient_occ_rates['StageName'].append(sleep_stage_name)
-
-                stage_rate = patient_data_df[patient_data_df.Stage==sleep_stage_name].SpikeOccRate.mean()
-                patient_occ_rates['OccRate'].append(stage_rate)
-
-            wake_rate = patient_data_df[patient_data_df.Stage=='Wake'].SpikeOccRate.mean()
-            axs.plot(1, wake_rate, marker='o', color='blue', markersize=12)
-            axs.plot(2, sleep_rate, marker='o', color='orange', markersize=12)
-            axs.plot([1,2], [wake_rate, sleep_rate], '--k', alpha=0.5)
+        # Analyze Spike Activity
+        stages_ci_ranges = {}
+        for stage_name in all_pats_avg_stage_activity.Stage.unique():
+            stage_sel = all_pats_avg_stage_activity.Stage==stage_name
+            assert stage_sel.sum() == nr_pats, "More than one entry per patient"
+            all_pats_activity = all_pats_avg_stage_activity.loc[stage_sel, 'Amplitude'].to_numpy()
+            ci_range = self.bootstrap_confidence_interval_univariate(all_pats_activity, func=np.mean, confidence_level=0.95, n_resamples=10000)
+            stages_ci_ranges[stage_name] = ci_range
+            # test normality
+            _, p_val = stats.shapiro(all_pats_activity)
+            normality = "normal"
+            if p_val < 0.05:
+                normality = "not normal"
+            print(f"{normality} -- {stage_name} ({np.mean(all_pats_activity):.2f}, CI={ci_range[0]:.2f}-{ci_range[1]:.2f}) (uV)")
             pass
-        
-        patient_occ_rates_df = pd.DataFrame(patient_occ_rates)
-    ################
-        # # Perform Friedman test
-        # friedman_stat, friedman_p_val = stats.friedmanchisquare(
-        #     patient_occ_rates['N3'], 
-        #     patient_occ_rates['N2'],
-        #     patient_occ_rates['N1'],
-        #     patient_occ_rates['REM'],
-        #     patient_occ_rates['WakeRate'],
-        #     nan_policy='raise',
-        #     )
-        # print(f"Friedman test: statistic = {friedman_stat:.2f}, p-value = {friedman_p_val:.2e}")
 
-        # # Perform Dunn's test for multiple comparisons
-        # p_values = sp.posthoc_dunn(spike_data_df_plot, val_col = 'Amplitude', group_col='Stage', p_adjust='bonferroni', sort=True)
-        # print(p_values)
-    ###############
-        
-        # Perform paired t-test
-        t_stat, p_val = stats.ttest_rel(patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='Wake'].to_numpy(),
-                                         patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='Sleep'].to_numpy(),
-                                           nan_policy='raise', alternative='two-sided')
-        print(f"Occ.Rate WAKE VS: SLEEP\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
-        # Perform Wilcoxon signed-rank test
-        wilcoxon_stat, wilcoxon_p_val = stats.wilcoxon(patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='Wake'].to_numpy(),
-                                                       patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='Sleep'].to_numpy(),
-                                                       nan_policy='raise', alternative='two-sided')
-        print(f"Occ.Rate WAKE VS: SLEEP\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
+        max_ci_limit = max([max(v) for k,v in stages_ci_ranges.items()])
 
-        # N3 vs N2
-        occ_rates_a = patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='Sleep'].to_numpy()
-        occ_rates_b = patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='Wake'].to_numpy()
-        t_stat, p_val = stats.ttest_rel(occ_rates_a, occ_rates_b, nan_policy='raise', alternative='greater')
-        print(f"Paired t-test Sleep vs Wake: t-statistic = {t_stat:.2f}, p-value = {p_val:.2e}")
-        # N3 vs N2
-        occ_rates_a = patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='N3'].to_numpy()
-        occ_rates_b = patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='N2'].to_numpy()
-        t_stat, p_val = stats.ttest_rel(occ_rates_a, occ_rates_b, nan_policy='raise', alternative='greater')
-        print(f"Paired t-test N3 vs N2: t-statistic = {t_stat:.2f}, p-value = {p_val:.2e}")
-        # N3 vs N1
-        occ_rates_a = patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='N3'].to_numpy()
-        occ_rates_b = patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='N1'].to_numpy()
-        t_stat, p_val = stats.ttest_rel(occ_rates_a, occ_rates_b, nan_policy='raise', alternative='greater')
-        print(f"Paired t-test N3 vs N1: t-statistic = {t_stat:.2f}, p-value = {p_val:.2e}")
-        # N3 vs REM
-        occ_rates_a = patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='N3'].to_numpy()
-        occ_rates_b = patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='REM'].to_numpy()
-        t_stat, p_val = stats.ttest_rel(occ_rates_a, occ_rates_b, nan_policy='raise', alternative='greater')
-        print(f"Paired t-test N3 vs REM: t-statistic = {t_stat:.2f}, p-value = {p_val:.2e}")
-        # N3 vs Wake
-        occ_rates_a = patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='N3'].to_numpy()
-        occ_rates_b = patient_occ_rates_df.OccRate[patient_occ_rates_df.StageName=='Wake'].to_numpy()
-        t_stat, p_val = stats.ttest_rel(occ_rates_a, occ_rates_b, nan_policy='raise', alternative='greater')
-        print(f"Paired t-test N3 vs Wake: t-statistic = {t_stat:.2f}, p-value = {p_val:.2e}")
+        # Plot patient average spike activity by sleep stage
+        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
+        assert nr_pats == len(all_pats_avg_stage_activity.Patient.unique()), "More than one entry per patient"
+        errorbar_def = ("ci", 95)  # Percentile interval for error bars
+        errorbar_characteristics = {'color': 'red', "linestyle":'-', "linewidth": 5, "alpha": 0.6}
+        bp_ax = sns.barplot(data=all_pats_avg_stage_activity, x='Stage', y='Amplitude', hue='Stage', 
+            order=self.sleep_stages_ls, palette=self.stages_colors, ax=axs,
+            capsize=.2,
+            errorbar=errorbar_def,
+            err_kws=errorbar_characteristics,
+            linewidth=1, edgecolor=".5", width=0.5, gap=0.1,
+            estimator=np.mean
+            )
+        
+        max_bar_height = 0
+        for cont in bp_ax.containers:
+            plt.bar_label(cont, fmt='%.2f', fontsize=32, label_type='edge', padding=3, color='black', weight='bold')
 
-        
-        htest_res_str = f"Paired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.2e}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.2e}"
-        axs.text(0.5, 0.95, htest_res_str, ha='center', va='top', transform=axs.transAxes, fontsize=16, color='black', bbox=dict(facecolor='white', alpha=0.5, edgecolor='black', boxstyle='round,pad=0.3'))
-        
-        axs.set_xticks([1, 2])
-        axs.set_xticklabels(['Wake', 'Sleep'], fontsize=18)
-        axs.set_ylabel("Spike Occ.Rate/min.", fontsize=32)
-        axs.set_title(f"{self.study_name}\nSpike Occ.Rate/min.\nNr.Patients = {nr_pats}", fontsize=48)
-        #axs.set_ylim(0, 1.5)
-        axs.set_xlim(0.5, 2.5)
-        axs.grid(color='0.8', linestyle='-', linewidth=0.5)
+        axs.set_ylabel("Spike Activity (uV)", fontsize=32)
+        axs.set_xlabel("Sleep Stage", fontsize=32)
+        plt.xticks(fontsize=32)
+        plt.yticks(fontsize=32)
+        plt.ylim(0, max_ci_limit*1.1)
+        #axs.set_title(f"{self.study_name}\nSpike Occ.Rate/min.\nNr.Patients = {nr_pats}", fontsize=48)
+        axs.set_title(f"{self.study_name}", fontsize=48)
+
         plt.get_current_fig_manager().full_screen_toggle()
         plt.tight_layout()
-        #plt.show()
-        plt.savefig(self.images_output_path / "Wake_Sleep_Spike_OccRate.png")
+        plt.savefig(self.images_output_path / "Average_Spike_Activity.png")
         #plt.waitforbuttonpress()
         plt.close()
-
-        patient_occ_rates_df = pd.DataFrame(patient_occ_rates)
         pass
 
     def analyze_sor_stages_differences(self, stage_duration_spike_rate_df:pd.DataFrame=None):
@@ -1176,7 +934,7 @@ class Spike_Activity_Analyzer:
         # Analyze Differences in Spike Occurrence Rate between Sleep Stages
         patients_ls = list(stage_duration_spike_rate_df.PatID.unique())
         nr_pats = len(patients_ls)
-        print(f"\n\nSpike Occurrence Rate Differences between Sleep Stages")
+        print(f"Spike Occurrence Rate Differences between Sleep Stages")
         print(f"Nr. Patients: {nr_pats}")
 
         stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
@@ -1200,9 +958,8 @@ class Spike_Activity_Analyzer:
                     #if p_val_a >= 0.05 and p_val_b >= 0.05:
                     if False:
                         # run paired t-test
-                        t_stat, t_p_val = stats.ttest_rel(spike_rate_a, spike_rate_b, nan_policy='raise', alternative='two-sided')
+                        t_stat, p_val = stats.ttest_rel(spike_rate_a, spike_rate_b, nan_policy='raise', alternative='two-sided')
                         #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
-                        test_results[ia,ib] = p_val
                     else:
                         # run Wilcoxon signed-rank test
                         #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
@@ -1245,6 +1002,82 @@ class Spike_Activity_Analyzer:
             plt.get_current_fig_manager().full_screen_toggle()
             plt.tight_layout()
             plt.savefig(self.images_output_path / f"Spike_OccRate_Wilcoxon_Test_Results_{method}_corrected.png")
+            plt.close()
+
+    def analyze_spike_activity_stages_differences(self, spike_data_df:pd.DataFrame=None):
+        patients_ls = list(spike_data_df.Patient.unique())
+        nr_pats = len(patients_ls)
+        print(f"Analyzing Spike Activity differences between Sleep Stages")
+        print(f"Nr. Patients: {nr_pats}")
+
+        # Get average spike activity per stage for each patient
+        all_pats_avg_stage_activity = spike_data_df[['Patient', 'Stage', 'Amplitude']].groupby(['Patient','Stage']).mean().reset_index()
+
+        stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
+        test_results = np.ones((len(stages_ls),len(stages_ls)))+100
+        for ia, stage_name_a in enumerate(stages_ls):
+            stage_sel_a = all_pats_avg_stage_activity.Stage==stage_name_a
+            spike_activity_a = all_pats_avg_stage_activity.Amplitude[stage_sel_a].to_numpy()
+            assert stage_sel_a.sum() == nr_pats, "More than one entry per patient"
+            for ib, stage_name_b in enumerate(stages_ls):
+                stage_sel_b = all_pats_avg_stage_activity.Stage==stage_name_b
+                assert stage_sel_b.sum() == nr_pats, "More than one entry per patient"
+                spike_activity_b = all_pats_avg_stage_activity.Amplitude[stage_sel_b].to_numpy()
+                assert len(spike_activity_a) == len(spike_activity_b), "Spike rates for different stages have different lengths"
+
+                # run Wilcoxon signed-rank test
+                if ia != ib:
+                    _, p_val_a = stats.shapiro(spike_activity_a)
+                    _, p_val_b = stats.shapiro(spike_activity_b)
+
+                    # If both samples are normally distributed, use paired t-test, otherwise use Wilcoxon signed-rank test
+                    #if p_val_a >= 0.05 and p_val_b >= 0.05:
+                    if False:
+                        # run paired t-test
+                        t_stat, p_val = stats.ttest_rel(spike_activity_a, spike_activity_b, nan_policy='raise', alternative='two-sided')
+                        #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
+                    else:
+                        # run Wilcoxon signed-rank test
+                        #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
+                        # run Wilcoxon signed-rank test
+                        wilcoxon_stat, p_val = stats.wilcoxon(spike_activity_a, spike_activity_b, nan_policy='raise', alternative='two-sided')
+                        #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
+                    test_results[ia,ib] = p_val
+        pass
+
+        # Create a mask
+        mask = np.triu(np.ones_like(test_results, dtype=bool))
+        threshold = 0.05
+
+        correction_methods = ['bonferroni', 'sidak', 'holm-sidak', 'holm', 'fdr_bh', 'fdr_by', 'fdr_tsbh', 'fdr_tsbky']
+        correction_methods = ['fdr_bh']
+
+        for method in correction_methods:
+            corrected_test_results = test_results.copy()
+            for ri in range(corrected_test_results.shape[0]):
+                _, corrected_p_values, _, _ = multipletests(test_results[ri][test_results[ri]<100], alpha=0.05, method=method) # bonferroni, sidak, holm-sidak, holm, fdr_bh, fdr_by, fdr_tsbh, fdr_tsbky
+                corrected_test_results[ri][test_results[ri]<100] = corrected_p_values
+
+            #print(f"Bonferroni corrected threshold: {threshold:.3f}")
+            #print(f"Holm-Bonferroni corrected p-values:\n{corrected_test_results}")
+            #print(f"Uncorrected p-values:\n{test_results}")
+
+            # Plot the heatmap of the test results
+            fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
+            ax = sns.heatmap(corrected_test_results, vmin=0, vmax=threshold, center=threshold, mask=mask, cmap='coolwarm', annot=True, fmt=".3f", annot_kws={"size": 32}, linewidths=.5, linecolor='white', cbar_kws={"shrink": .8},ax=axs)
+            cbar = ax.collections[0].colorbar
+            # Adjust the font size of the colorbar tick labels
+            cbar.ax.tick_params(labelsize=32) # Set specific font size
+            cbar.set_label('p value', fontsize=32) # Set colorbar label
+
+            ax.grid(False)
+            ax.set_xticklabels(stages_ls, rotation=45, fontsize=32)
+            ax.set_yticklabels(stages_ls, rotation=0, fontsize=32)
+            alpha_str = r" $\alpha$"
+            plt.title(f"Spike Activity\nWilcoxon Signed-Rank Test p-values ({method} corrected)\n({alpha_str}:{threshold})", fontsize=36)
+            plt.get_current_fig_manager().full_screen_toggle()
+            plt.tight_layout()
+            plt.savefig(self.images_output_path / f"Spike_Activity_Wilcoxon_Test_Results_{method}_corrected.png")
             plt.close()
 
     def plot_soz_prediction_performance_vs_szr_count(self, prediction_results_df:pd.DataFrame=None):
@@ -1315,7 +1148,7 @@ if __name__ == "__main__":
 
     # Predict SOZ based on Spike Activity
     studies_ls =  [fr_ILAES2025_patients(), ACH_Pediatric_Patients_All()]
-    studies_ls =  [ACH_Pediatric_Patients_All()]
+    #studies_ls =  [ACH_Pediatric_Patients_All()]
 
     prediction_results_ls = []
     for study in studies_ls:
@@ -1340,25 +1173,29 @@ if __name__ == "__main__":
 
         # Read and analyze sleep stages and spike occurrence rate data
         stage_duration_spike_rate_df = spike_analyzer.read_stages_duration_and_spike_rates()
-        #spike_analyzer.plot_group_sleep_stage_durations_piechart(stage_duration_spike_rate_df)
+        # Read and analyze spike actvity data (average spike amplitude)
+        spike_data_df = spike_analyzer.read_patient_spike_data()
+
+        # Analyze differences in sleep stage durations
         spike_analyzer.plot_group_sleep_stage_durations_barchart(stage_duration_spike_rate_df)
         #spike_analyzer.plot_individual_sleep_stage_durations(stage_duration_spike_rate_df)
+                
+        # Analyze differences in spike occurrence rate between sleep stages
         spike_analyzer.plot_spike_occ_rate(stage_duration_spike_rate_df)
         spike_analyzer.analyze_sor_stages_differences(stage_duration_spike_rate_df)
 
-        
-        # Read and analyze spike actvity data (average spike amplitude)
-        spike_data_df = spike_analyzer.read_patient_spike_data()
+        # Analyze differences in spike activity between wake and sleep stages    
         spike_analyzer.plot_per_stage_spike_activity(spike_data_df)
         spike_analyzer.analyze_spike_activity_stages_differences(spike_data_df)
-        spike_data_df = spike_analyzer.handle_patient_outliers(spike_data_df.copy())
-        spike_analyzer.hypothesis_test_soz_vs_nonsoz(spike_data_df)
+        
+        # spike_data_df = spike_analyzer.handle_patient_outliers(spike_data_df.copy())
+        # spike_analyzer.hypothesis_test_soz_vs_nonsoz(spike_data_df)
 
-        spike_data_df = spike_analyzer.get_patient_scaled_spike_data(spike_data_df)
-        prediction_results_df = spike_analyzer.predict_soz_with_spike_activity(spike_data_df, add_features=False)
-        spike_analyzer.predict_soz_with_spike_activity_figure_1(spike_data_df, add_features=False)
-        spike_analyzer.plot_soz_prediction_performance_vs_szr_count(prediction_results_df)
-        prediction_results_ls.append(prediction_results_df)
+        # spike_data_df = spike_analyzer.get_patient_scaled_spike_data(spike_data_df)
+        # prediction_results_df = spike_analyzer.predict_soz_with_spike_activity(spike_data_df, add_features=False)
+        # spike_analyzer.predict_soz_with_spike_activity_figure_1(spike_data_df, add_features=False)
+        # spike_analyzer.plot_soz_prediction_performance_vs_szr_count(prediction_results_df)
+        # prediction_results_ls.append(prediction_results_df)
 
     sys.exit()
 
