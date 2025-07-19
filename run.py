@@ -75,12 +75,16 @@ if __name__ == "__main__":
 
     #output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Output_HandleOffset_CorrectPolarity_YesAbsValue")
     output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Output_HandleOffset_CorrectPolarity_NoAbsValue")
-    output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Output_HandleOffset_CorrectPolarity_NoAbsValue_Accelerated")
+    output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Output_HandleOffset_CorrectPolarity_NoAbsValue_Accelerated_MeanChFeats")
+    output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Output_HandleOffset_CorrectPolarity_NoAbsValue_Accelerated_MedianChFeats")
+    output_path = Path("C:\\Users\\HFO\\Development\\pyeeg_toolbox\\Output_HandleOffset_CorrectPolarity_NoAbsValue_Accelerated_SelectedChannelFeats")
 
     os.makedirs(output_path, exist_ok=True)
 
     studies_ls = [fr_ILAES2025_patients(), ACH_Pediatric_Patients(), ACH_Pediatric_Patients_Spike_Drive()]
-    #studies_ls = [ACH_Pediatric_Patients(), ACH_Pediatric_Patients_Spike_Drive()]
+    studies_ls = [ACH_Pediatric_Patients(), ACH_Pediatric_Patients_Spike_Drive()]
+    studies_ls = [fr_ILAES2025_patients()]
+
     for study_info in studies_ls:
         print(f"Processing {study_info.dataset_name}...")
         print(output_path.stem)

@@ -377,7 +377,8 @@ class VectorizedAvgWdwAnalyzer(SpikeAmplitudeAnalyzer):
                         channel_spike_ampl = 0
                     else:
                         channel_spike_ampl = np.median(spk_ampl_vec)
-                        #channel_spike_ampl = np.mean(spk_ampl_vec)
+                        channel_spike_ampl = np.mean(spk_ampl_vec)
+                        #channel_spike_ampl = np.max(spk_ampl_vec)
                         if np.isnan(channel_spike_ampl):
                             channel_spike_ampl = 0
                         
