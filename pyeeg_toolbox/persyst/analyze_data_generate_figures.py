@@ -176,6 +176,10 @@ class Spike_Activity_Analyzer:
         # Concatenate data from all patients, scale amplitude for each patient
         pats_ls = spike_data_df.Patient.unique()
         scaled_spike_data_df = pd.DataFrame()
+
+        # Convert Amplitude to uV
+        spike_data_df.loc[:, 'Amplitude'] = spike_data_df.Amplitude.values*1000*1000 # convert to uV
+
         for pdata_fn in pats_ls:
             pdata_df = spike_data_df[spike_data_df.Patient.str.fullmatch(pdata_fn, case=False)].reset_index(drop=True).copy()
             pdata_df.Amplitude = MinMaxScaler().fit_transform(pdata_df.Amplitude.values.reshape(-1, 1)) # MinMaxScaler, StandardScaler()
@@ -196,7 +200,7 @@ class Spike_Activity_Analyzer:
         # Analyze Sleep Stages Duration and Confidence Intervals
         stages_ci_ranges = {}
         for stage_name in stage_duration_spike_rate_orig_df.Stage.unique():
-            stage_sel = stage_duration_spike_rate_orig_df.Stage==stage_name
+            stage_sel = stage_duration_spike_rate_orig_df.Stage.str.fullmatch(stage_name, case=False)
             assert stage_sel.sum() == nr_pats, "More than one entry per patient"
             all_pats_stage_durations = stage_duration_spike_rate_orig_df.loc[stage_sel, 'StageDurM'].to_numpy()/60
             ci_range = self.bootstrap_confidence_interval_univariate(all_pats_stage_durations, func=np.mean, confidence_level=0.95, n_resamples=10000)
@@ -228,7 +232,7 @@ class Spike_Activity_Analyzer:
             )
         for cont in bp_ax.containers:
             axs.bar_label(cont, fmt='%.2f', fontsize=32, label_type='edge', padding=3, color='black', weight='bold')
-        axs.set_ylabel("Spikes / electrode / min.", fontsize=32)
+        axs.set_ylabel("Duration (hours)", fontsize=32)
         axs.set_xlabel("Sleep Stage", fontsize=32)
         axs.tick_params(axis='x', labelsize=32)
         axs.tick_params(axis='y', labelsize=32)
@@ -253,7 +257,7 @@ class Spike_Activity_Analyzer:
             )
         for cont in bp_ax.containers:
             axs.bar_label(cont, fmt='%.2f', fontsize=32, label_type='edge', padding=3, color='black', weight='bold')
-        axs.set_ylabel("Spikes / electrode / min.", fontsize=32)
+        axs.set_ylabel("Duration (hours)", fontsize=32)
         axs.set_xlabel("Sleep Stage", fontsize=32)
         axs.tick_params(axis='x', labelsize=32)
         axs.tick_params(axis='y', labelsize=32)
@@ -283,7 +287,7 @@ class Spike_Activity_Analyzer:
             sum_stages_dur_mins = []
             new_to_plot_stage_names = []
             for stage_name in to_plot_stage_names:
-                stage_sel = patient_data_df.Stage==stage_name
+                stage_sel = patient_data_df.Stage.str.fullmatch(stage_name, case=False)
                 assert stage_sel.sum() == 1, "More than one entry per patient"
                 prctg_val = (patient_data_df.StageDurM[stage_sel].values/total_sleep_duration)*100
                 sum_stages_dur_mins.append(patient_data_df.StageDurM[stage_sel].sum())
@@ -322,7 +326,7 @@ class Spike_Activity_Analyzer:
         # Analyze Spike Occurrence Rate
         stages_ci_ranges = {}
         for stage_name in stage_duration_spike_rate_df.Stage.unique():
-            stage_sel = stage_duration_spike_rate_df.Stage==stage_name
+            stage_sel = stage_duration_spike_rate_df.Stage.str.fullmatch(stage_name, case=False)
             assert stage_sel.sum() == nr_pats, "More than one entry per patient"
             all_pats_sor = stage_duration_spike_rate_df.loc[stage_sel, 'SpikeOccRate'].to_numpy()
             ci_range = self.bootstrap_confidence_interval_univariate(all_pats_sor, func=np.mean, confidence_level=0.95, n_resamples=10000)
@@ -376,11 +380,11 @@ class Spike_Activity_Analyzer:
         stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
         test_results = np.ones((len(stages_ls),len(stages_ls)))+100
         for ia, stage_name_a in enumerate(stages_ls):
-            stage_sel_a = stage_duration_spike_rate_df.Stage==stage_name_a
+            stage_sel_a = stage_duration_spike_rate_df.Stage.str.fullmatch(stage_name_a, case=False)
             spike_rate_a = stage_duration_spike_rate_df.SpikeOccRate[stage_sel_a].to_numpy()
             assert stage_sel_a.sum() == nr_pats, "More than one entry per patient"
             for ib, stage_name_b in enumerate(stages_ls):
-                stage_sel_b = stage_duration_spike_rate_df.Stage==stage_name_b
+                stage_sel_b = stage_duration_spike_rate_df.Stage.str.fullmatch(stage_name_b, case=False)
                 assert stage_sel_b.sum() == nr_pats, "More than one entry per patient"
                 spike_rate_b = stage_duration_spike_rate_df.SpikeOccRate[stage_sel_b].to_numpy()
                 assert len(spike_rate_a) == len(spike_rate_b), "Spike rates for different stages have different lengths"
@@ -455,8 +459,8 @@ class Spike_Activity_Analyzer:
 
         # Analyze Spike Activity
         stages_ci_ranges = {}
-        for stage_name in all_pats_avg_stage_activity.Stage.unique():
-            stage_sel = all_pats_avg_stage_activity.Stage==stage_name
+        for stage_name in self.sleep_stages_ls:
+            stage_sel = all_pats_avg_stage_activity.Stage.str.fullmatch(stage_name, case=False)
             assert stage_sel.sum() == nr_pats, "More than one entry per patient"
             all_pats_activity = all_pats_avg_stage_activity.loc[stage_sel, 'Amplitude'].to_numpy()
             ci_range = self.bootstrap_confidence_interval_univariate(all_pats_activity, func=np.mean, confidence_level=0.95, n_resamples=10000)
@@ -515,11 +519,11 @@ class Spike_Activity_Analyzer:
         stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
         test_results = np.ones((len(stages_ls),len(stages_ls)))+100
         for ia, stage_name_a in enumerate(stages_ls):
-            stage_sel_a = all_pats_avg_stage_activity.Stage==stage_name_a
+            stage_sel_a = all_pats_avg_stage_activity.Stage.str.fullmatch(stage_name_a, case=False)
             spike_activity_a = all_pats_avg_stage_activity.Amplitude[stage_sel_a].to_numpy()
             assert stage_sel_a.sum() == nr_pats, "More than one entry per patient"
             for ib, stage_name_b in enumerate(stages_ls):
-                stage_sel_b = all_pats_avg_stage_activity.Stage==stage_name_b
+                stage_sel_b = all_pats_avg_stage_activity.Stage.str.fullmatch(stage_name_b, case=False)
                 assert stage_sel_b.sum() == nr_pats, "More than one entry per patient"
                 spike_activity_b = all_pats_avg_stage_activity.Amplitude[stage_sel_b].to_numpy()
                 assert len(spike_activity_a) == len(spike_activity_b), "Spike rates for different stages have different lengths"
@@ -578,6 +582,146 @@ class Spike_Activity_Analyzer:
             plt.tight_layout()
             plt.savefig(self.images_output_path / f"Spike_Activity_Wilcoxon_Test_Results_{method}_corrected.png")
             plt.close()
+
+    def plot_soz_vs_nonsoz_activity(self, spike_data_df:pd.DataFrame=None):
+        # Plot SOZ vs Non-SOZ differences in spike activity across sleep stages
+        patients_ls = list(spike_data_df.Patient.unique())
+        nr_pats = len(patients_ls)
+        print(f"Plotting SOZ vs Non-SOZ spike activity in each sleep stages")
+        print(f"Nr. Patients: {nr_pats}")
+
+        # Convert Amplitude to uV
+        spike_data_df.loc[:, 'Amplitude'] = spike_data_df.Amplitude.values*1000*1000
+
+        # Compare SOZ vs Non-SOZ
+        fig, axs = plt.subplots(1, 5, figsize=FIGSIZE)
+
+        # Compare SOZ vs Non-SOZ in the different sleep stages
+        for si, stage_name in enumerate(self.sleep_stages_ls):
+            plt_ax = axs[si]
+            stage_data_df = spike_data_df[spike_data_df.Stage.str.fullmatch(stage_name, case=False)].copy().reset_index(drop=True)
+                        
+            colors_soz = [c for c in self.stages_colors[stage_name]]
+            colors_soz.append(1)  # Add alpha channel for transparency
+            colors_non_soz = [c for c in self.stages_colors[stage_name]]
+            colors_non_soz.append(0.5)  # Add alpha channel for transparency
+            soz_colors_dict = {'SOZ':colors_soz, 'Non-SOZ':colors_non_soz}
+
+            # plot barplot with error bars
+            errorbar_def = ("ci", 95)  # Percentile interval for error bars
+            errorbar_characteristics = {'color': 'red', "linestyle":'-', "linewidth": 5, "alpha": 0.6}
+            bp_ax = sns.barplot(data=stage_data_df, x='SOZ', y='Amplitude', hue='SOZ', palette=soz_colors_dict, 
+                order=['Non-SOZ', 'SOZ'],
+                capsize=.2,
+                errorbar=errorbar_def,
+                err_kws=errorbar_characteristics,
+                linewidth=1, edgecolor=".5", 
+                width=0.8, gap=0.0,
+                estimator=np.mean,
+                ax=plt_ax
+                )
+            # Add bar labels
+            for cont in bp_ax.containers:
+                labels = plt_ax.bar_label(cont, fmt='%.2f', fontsize=32, label_type='center', padding=0, rotation=90, color='black', weight='bold')
+                # Adjust label x position
+                for label in labels:
+                    x, y = label.get_position()
+                    label.set_x(x + 5)  # Adjust 
+            
+            # Add hatch pattern to differentiate SOZ and Non-SOZ
+            for pi, patch in enumerate(plt_ax.patches):
+                if pi == 0:
+                    # r, g, b, a = patch.get_facecolor() # Get current color (including alpha)
+                    #patch.set_facecolor((r, g, b, 0.5))
+                    patch.set_hatch('..')  # Add hatch pattern to differentiate SOZ and Non-SOZ
+                    fc = patch.get_facecolor()
+                    patch.set_edgecolor(fc)
+                    patch.set_facecolor('none')
+
+            # Show y-axis label only for the first subplot
+            if si == 0:
+                plt_ax.set_ylabel("Spike Activity (uV)", fontsize=32)
+            else:
+                plt_ax.set_ylabel("")
+                plt_ax.set_yticklabels("")
+
+            # Plot legend, set the handles and labels manually
+            # This is necessary to avoid grabbing the legend from the barplot's error bars
+            # and to ensure the legend is only for SOZ and Non-SOZ
+            handles = []
+            labels = []
+            for bar, label in zip(bp_ax.patches[:2], ['Non-SOZ', 'SOZ']):  # Adjust [:2] if you have more bars
+                handles.append(bar)
+                labels.append(label)
+            plt_ax.legend(handles, labels, fontsize=20, loc='upper left', frameon=False)
+
+            plt_ax.set_xlabel(stage_name, fontsize=32)
+            # plt_ax.tick_params(axis='x', labelsize=32, rotation=60)
+            plt_ax.set_xticklabels("")
+            plt_ax.tick_params(axis='y', labelsize=32)
+
+            # if 'Freiburg' in self.study_name:
+            #     plt_ax.set_ylim(0, 180)
+            # else:
+            #     plt_ax.set_ylim(0, 310)
+            plt_ax.set_ylim(0, 180)
+            plt_ax.set_title(f"{stage_name}", fontsize=32, color=self.stages_colors[stage_name], weight='bold')
+            plt_ax.set_title('')
+            # plt.xticks(fontsize=32)
+            # plt.yticks(fontsize=32)
+
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.suptitle(f"{self.study_name}", fontsize=48)
+        plt.subplots_adjust(wspace=3)
+        plt.tight_layout()
+        plt.savefig(self.images_output_path / "Spike_Activity_SOZ_vs_NonSOZ_Hypothesis_Tests.png")
+        #plt.waitforbuttonpress()
+        plt.close()
+        #print(res_dict)
+
+
+        # Perform Mann-Whitney U test for SOZ vs Non-SOZ differences in spike activity across sleep stages
+        res_dict = {'Stage':[], 'U_statistic':[], 'p_value':[]}
+        stages_ci_ranges = {}
+        print(f"\n\nPerforming Mann-Whitney U test for SOZ vs Non-SOZ differences in spike activity across sleep stages")
+        print("Stage\tNon-SOZ Mean\tNon-SOZ CI\tSOZ Mean\tSOZ CI\tp-value")
+        nr_soz = 0
+        nr_non_soz = 0
+        for si, stage_name in enumerate(self.sleep_stages_ls):
+            plt_ax = axs[si]
+            stage_data_df = spike_data_df[spike_data_df.Stage.str.fullmatch(stage_name, case=False)].copy().reset_index(drop=True)
+            stage_data_df.loc[:, 'Amplitude'] = stage_data_df.Amplitude.values
+
+            spike_data_df.Stage.str.fullmatch(stage_name, case=False)
+            soz_amplitudes = stage_data_df.Amplitude[stage_data_df.SOZ.str.fullmatch('SOZ', case=False)].values
+            non_soz_amplitudes = stage_data_df.Amplitude[stage_data_df.SOZ.str.fullmatch('Non-SOZ', case=False)].values
+            res = stats.mannwhitneyu(soz_amplitudes, non_soz_amplitudes)
+            nr_soz = len(soz_amplitudes)
+            nr_non_soz = len(non_soz_amplitudes)
+            res_dict['Stage'].append(stage_name)
+            res_dict['U_statistic'].append(res.statistic)
+            res_dict['p_value'].append(res.pvalue)
+
+            ci_range_soz = self.bootstrap_confidence_interval_univariate(soz_amplitudes, func=np.mean, confidence_level=0.95, n_resamples=10000)
+            ci_range_nonsoz = self.bootstrap_confidence_interval_univariate(non_soz_amplitudes, func=np.mean, confidence_level=0.95, n_resamples=10000)
+            stages_ci_ranges[stage_name] = {'SOZ': ci_range_soz, 'Non-SOZ': ci_range_nonsoz}
+            # test normality
+            _, p_val_soz = stats.shapiro(soz_amplitudes)
+            _, p_val_non_soz = stats.shapiro(non_soz_amplitudes)
+            normality_soz = "normal"
+            normality_non_soz = "normal"
+            if p_val_soz < 0.05:
+                normality_soz = "not normal"
+            if p_val_non_soz < 0.05:
+                normality_non_soz = "not normal"
+
+            #print(f"\nMann-Whitney U test for {stage_name} SOZ vs Non-SOZ, p={res.pvalue:.3e} (U={res.statistic:.2f}, n_SOZ={nr_soz}, n_Non-SOZ={nr_non_soz})")
+            #print(f"{normality_soz} -- {stage_name} SOZ= {np.mean(soz_amplitudes):.2f} (CI={ci_range_soz[0]:.2f}-{ci_range_soz[1]:.2f}) (uV)")
+            #print(f"{normality_non_soz} -- {stage_name} Non-SOZ= {np.mean(non_soz_amplitudes):.2f} (CI={ci_range_nonsoz[0]:.2f}-{ci_range_nonsoz[1]:.2f}) (uV)")
+            print(f"{stage_name}\t{np.mean(non_soz_amplitudes):.2f}\t{ci_range_nonsoz[0]:.2f}-{ci_range_nonsoz[1]:.2f}\t{np.mean(soz_amplitudes):.2f}\t{ci_range_soz[0]:.2f}-{ci_range_soz[1]:.2f}\t{res.pvalue:.3e}")
+        
+        print(f"\nNr. SOZ: {nr_soz}, Nr. Non-SOZ: {nr_non_soz}")
+        return pd.DataFrame(res_dict)
 
     def plot_soz_vs_nonsoz_diff(self, spike_data_df:pd.DataFrame=None):
         # Analyze SOZ vs Non-SOZ differences in spike activity across sleep stages
@@ -752,19 +896,20 @@ class Spike_Activity_Analyzer:
         
         nr_pats = len(spike_data_df.Patient.unique())
 
+        print(f"Predicting SOZ with Spike Activity")
+        print(f"Nr. Patients: {nr_pats}")
+
         # Predict SOZ based on Spike Activity
-        analysis_stages = copy.copy(self.sleep_stages_ls)
-        analysis_stages_colors = copy.copy(self.stages_colors)
         prediction_results = {'TestPatID':[], 'TestPatient':[], 'Stage':[], 'Metric':[], 'Value':[], 'NrClinicalSzrs':[], 'NrElectroSzrs':[]}
 
         # Compare SOZ vs Non-SOZ
         fig, axs = plt.subplots(1, 1, figsize=FIGSIZE, constrained_layout=True)
 
-        for si, stage_name in enumerate(analysis_stages):
+        for si, stage_name in enumerate(self.sleep_stages_ls):
             if stage_name == 'AllStages':
                 stage_data_df = spike_data_df[spike_data_df.Stage!='Unknown']
             else:
-                stage_data_df = spike_data_df[spike_data_df.Stage==stage_name]
+                stage_data_df = spike_data_df[spike_data_df.Stage.str.fullmatch(stage_name, case=False)]
             pass
 
             roc_avg = {'fpr':np.linspace(0,1,1000), 'tpr':np.zeros_like(np.linspace(0,1,1000))}
@@ -774,12 +919,11 @@ class Spike_Activity_Analyzer:
                 test_set_df = stage_data_df[stage_data_df.Patient==pat_id]
 
                 X_train = train_set_df.Amplitude.to_numpy().reshape(-1, 1)
-                y_train = train_set_df.SOZ.to_numpy()=='SOZ'
+                y_train = train_set_df.SOZ.str.fullmatch('SOZ', case=False).to_numpy()
                 X_train, y_train = RandomOverSampler(random_state=42).fit_resample(X_train, y_train)
-                #print(f"Positives to Negatives Ratio:{np.sum(y_train)/len(y_train)*100}")
                 
                 X_test = test_set_df.Amplitude.to_numpy().reshape(-1, 1)
-                y_test = test_set_df.SOZ.to_numpy()=='SOZ'
+                y_test = test_set_df.SOZ.str.fullmatch('SOZ', case=False).to_numpy()
 
                 assert np.unique(y_train).shape[0] > 1, "Train set has only one class"
                 assert np.unique(y_test).shape[0] > 1, "Test set has only one class"
@@ -836,8 +980,12 @@ class Spike_Activity_Analyzer:
             # = 1.0  # Ensure the last point is (1,1)
             prediction_results_df = pd.DataFrame(prediction_results)
 
-            label=f"{stage_name}(avg. AUROC: {np.mean(auroc_ls):.2f})"
-            axs.plot(roc_avg['fpr'], roc_avg['tpr'],color=analysis_stages_colors[stage_name], alpha=1, linewidth=8, linestyle='-',label=label)
+            ci_range_auroc = self.bootstrap_confidence_interval_univariate(auroc_ls, func=np.mean, confidence_level=0.95, n_resamples=10000)
+
+            label=f"{stage_name}({r"$\overline{\mathrm{AUROC}}$"}: {np.mean(auroc_ls):.2f}, CI: {ci_range_auroc[0]:.2f}-{ci_range_auroc[1]:.2f})"
+
+            # Compare SOZ vs Non-SOZ
+            axs.plot(roc_avg['fpr'], roc_avg['tpr'],color=self.stages_colors[stage_name], alpha=1, linewidth=8, linestyle='-',label=label)
             axs.plot(np.linspace(0,1,100), np.linspace(0,1,100),color='k', alpha=1, linewidth=1, linestyle='--')
 
             #axs.set_title(f"ROC, All Sleep Stages", fontsize=48)
@@ -853,15 +1001,7 @@ class Spike_Activity_Analyzer:
             axs.tick_params(axis='x', rotation=45, labelsize=32)          
             axs.tick_params(axis='y', rotation=0, labelsize=32)
 
-            # # Add text with a text box to the subplot
-            # text_str = f"SOZ Prediction\nROC  Curves}"
-            # axs.text(0.5, 0.98, text_str,
-            #         transform=axs.transAxes, # Use axes coordinates
-            #         fontsize=32,
-            #         verticalalignment='top',
-            #         horizontalalignment='center',
-            #         bbox={'facecolor': analysis_stages_colors[stage_name], 'alpha': 0.7, 'pad': 5})
-            print(f"Stage: {stage_name}, AUROC: {np.mean(auroc_ls):.3f} (std.dev.: {np.std(auroc_ls):.3f})")       
+            print(f"{stage_name}({np.mean(auroc_ls):.2f}, CI={ci_range_auroc[0]:.2f}-{ci_range_auroc[1]:.2f})")       
         
         axs.set_title(f"SOZ Prediction\nROC Curves, All Sleep Stages", fontsize=48)
         axs.plot(np.linspace(0,1,100), np.linspace(0,1,100),color='k', alpha=1, linewidth=1, linestyle='--')    
@@ -869,12 +1009,12 @@ class Spike_Activity_Analyzer:
         axs.grid(True, linestyle='-', alpha=1, linewidth=1)
         plt.get_current_fig_manager().full_screen_toggle()
         plt.subplots_adjust(wspace=0.3, hspace=0.5, left=0.1, right=0.9, bottom=0.3, top=0.7)
-        plt.savefig(self.images_output_path / "SOZ_Prediction_ROC_Curves_ver2.png")
+        plt.savefig(self.images_output_path / "SOZ_Prediction_ROC_Curves.png")
         #plt.show()
         plt.close()
         
         return prediction_results_df
-        pass
+        
 
     def plot_soz_prediction_performance_vs_szr_count(self, prediction_results_df:pd.DataFrame=None):
         prediction_results_df = prediction_results_df[prediction_results_df.Metric=='AUROC'].reset_index(drop=True).copy()
@@ -990,13 +1130,15 @@ if __name__ == "__main__":
         spike_data_df = spike_analyzer.handle_patient_outliers(spike_data_df.copy())
 
         # Analyze SOZ vs Non-SOZ differences in spike activity
-        spike_analyzer.plot_soz_vs_nonsoz_diff(spike_data_df.copy())
-        spike_analyzer.analyze_soz_vs_nonsoz_diff(spike_data_df.copy())
+        spike_analyzer.plot_soz_vs_nonsoz_activity(spike_data_df.copy())
+        #spike_analyzer.plot_soz_vs_nonsoz_diff(spike_data_df.copy())
+        #spike_analyzer.analyze_soz_vs_nonsoz_diff(spike_data_df.copy())
 
         spike_data_df = spike_analyzer.get_patient_scaled_spike_data(spike_data_df)
         prediction_results_df = spike_analyzer.predict_soz_with_spike_activity(spike_data_df, add_features=False)
         spike_analyzer.plot_soz_prediction_performance_vs_szr_count(prediction_results_df)
         prediction_results_ls.append(prediction_results_df)
+        pass
 
     #sys.exit()
 
@@ -1016,7 +1158,7 @@ if __name__ == "__main__":
         nr_pats = len(list(study.patients.keys()))
         stages_ci_ranges = {}
         for stage_name in prediction_results_df.Stage.unique():
-            stage_sel = np.logical_and(prediction_results_df.Stage==stage_name, prediction_results_df.Metric=='AUROC')
+            stage_sel = np.logical_and(prediction_results_df.Stage.str.fullmatch(stage_name, case=False), prediction_results_df.Metric=='AUROC')
             assert stage_sel.sum() == nr_pats, "More than one entry per patient"
             all_pats_auroc = prediction_results_df.loc[stage_sel, 'Value'].to_numpy()
             ci_range = Spike_Activity_Analyzer().bootstrap_confidence_interval_univariate(all_pats_auroc, func=np.mean, confidence_level=0.95, n_resamples=10000)
