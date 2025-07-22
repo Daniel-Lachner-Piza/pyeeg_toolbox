@@ -21,6 +21,8 @@ from studies_info import fr_ILAES2025_patients, ACH_Pediatric_Patients_All
 from statsmodels.stats.anova import AnovaRM 
 from scipy.stats import bootstrap
 from statsmodels.stats.multitest import multipletests
+from matplotlib.patches import Patch
+
 
 from imblearn.over_sampling import RandomOverSampler, SMOTE
 
@@ -404,7 +406,11 @@ class Spike_Activity_Analyzer:
                         # run Wilcoxon signed-rank test
                         #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
                         # run Wilcoxon signed-rank test
-                        wilcoxon_stat, p_val = stats.wilcoxon(spike_rate_a, spike_rate_b, nan_policy='raise', alternative='two-sided')
+                        alternative_str = 'greater'
+                        if np.mean(spike_rate_a) < np.mean(spike_rate_b):
+                            alternative_str = 'less'
+                        alternative_str = 'two-sided'
+                        wilcoxon_stat, p_val = stats.wilcoxon(spike_rate_a, spike_rate_b, nan_policy='raise', alternative=alternative_str)
                         #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
                     test_results[ia,ib] = p_val
         pass
@@ -543,7 +549,11 @@ class Spike_Activity_Analyzer:
                         # run Wilcoxon signed-rank test
                         #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
                         # run Wilcoxon signed-rank test
-                        wilcoxon_stat, p_val = stats.wilcoxon(spike_activity_a, spike_activity_b, nan_policy='raise', alternative='two-sided')
+                        alternative_str = 'greater'
+                        if np.mean(spike_activity_a) < np.mean(spike_activity_b):
+                            alternative_str = 'less'
+                        alternative_str = 'two-sided'
+                        wilcoxon_stat, p_val = stats.wilcoxon(spike_activity_a, spike_activity_b, nan_policy='raise', alternative=alternative_str)
                         #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
                     test_results[ia,ib] = p_val
         pass
@@ -849,7 +859,11 @@ class Spike_Activity_Analyzer:
                         # run Wilcoxon signed-rank test
                         #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
                         # run Wilcoxon signed-rank test
-                        wilcoxon_stat, p_val = stats.wilcoxon(spike_activity_a_diff, spike_activity_b_diff, nan_policy='raise', alternative='two-sided')
+                        alternative_str = 'greater'
+                        if np.mean(spike_activity_a_diff) < np.mean(spike_activity_b_diff):
+                            alternative_str = 'less'
+                        alternative_str = 'two-sided'
+                        wilcoxon_stat, p_val = stats.wilcoxon(spike_activity_a_diff, spike_activity_b_diff, nan_policy='raise', alternative=alternative_str)
                         #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
                     test_results[ia,ib] = p_val
         pass
@@ -982,7 +996,7 @@ class Spike_Activity_Analyzer:
 
             ci_range_auroc = self.bootstrap_confidence_interval_univariate(auroc_ls, func=np.mean, confidence_level=0.95, n_resamples=10000)
 
-            label=f"{stage_name}({r"$\overline{\mathrm{AUROC}}$"}: {np.mean(auroc_ls):.2f}, CI: {ci_range_auroc[0]:.2f}-{ci_range_auroc[1]:.2f})"
+            label=f"{stage_name}({r"$\overline{\mathrm{AUROC}}$"}={np.mean(auroc_ls):.2f}, CI={ci_range_auroc[0]:.2f}-{ci_range_auroc[1]:.2f})"
 
             # Compare SOZ vs Non-SOZ
             axs.plot(roc_avg['fpr'], roc_avg['tpr'],color=self.stages_colors[stage_name], alpha=1, linewidth=8, linestyle='-',label=label)
@@ -1001,11 +1015,11 @@ class Spike_Activity_Analyzer:
             axs.tick_params(axis='x', rotation=45, labelsize=32)          
             axs.tick_params(axis='y', rotation=0, labelsize=32)
 
-            print(f"{stage_name}({np.mean(auroc_ls):.2f}, CI={ci_range_auroc[0]:.2f}-{ci_range_auroc[1]:.2f})")       
+            print(f"{stage_name} ({np.mean(auroc_ls):.2f}, CI={ci_range_auroc[0]:.2f}-{ci_range_auroc[1]:.2f})")       
         
         axs.set_title(f"SOZ Prediction\nROC Curves, All Sleep Stages", fontsize=48)
         axs.plot(np.linspace(0,1,100), np.linspace(0,1,100),color='k', alpha=1, linewidth=1, linestyle='--')    
-        axs.legend(loc='lower right', fontsize=32, frameon=True, facecolor='w', edgecolor='k')
+        axs.legend(loc='lower right', fontsize=28, frameon=True, facecolor='w', edgecolor='k')
         axs.grid(True, linestyle='-', alpha=1, linewidth=1)
         plt.get_current_fig_manager().full_screen_toggle()
         plt.subplots_adjust(wspace=0.3, hspace=0.5, left=0.1, right=0.9, bottom=0.3, top=0.7)
@@ -1015,6 +1029,258 @@ class Spike_Activity_Analyzer:
         
         return prediction_results_df
         
+    def analyze_soz_prediction_performance(self, prediction_results_df:pd.DataFrame=None):
+       
+        # Analyze SOZ prediction performance
+        nr_pats = len(prediction_results_df.TestPatient.unique())
+        print(f"Analyzing SOZ prediction performance")
+        print(f"Nr. Patients: {nr_pats}")
+
+        # Get AUROC values for each stage
+        stages_auroc = {}
+        for stage_name in self.sleep_stages_ls:
+            stage_data_df = prediction_results_df[prediction_results_df.Stage.str.fullmatch(stage_name, case=False)]
+            auroc_vals = stage_data_df[stage_data_df.Metric=='AUROC'].Value.to_numpy()
+            assert len(auroc_vals) == nr_pats, f"More than one entry per patient for AUROC in stage {stage_name}"
+            stages_auroc[stage_name] = auroc_vals
+            pass
+
+        stat_val, p_val = stats.kruskal(stages_auroc['N3'], stages_auroc['N2'], stages_auroc['N1'], stages_auroc['REM'], stages_auroc['Wake'])
+        ########################
+        stages_auroc_df = pd.DataFrame(stages_auroc).melt(var_name='Stage', value_name='AUROC', ignore_index=True)
+        fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
+        errorbar_def = ("ci", 95)  # Percentile interval for error bars
+        errorbar_characteristics = {'color': 'red', "linestyle":'-', "linewidth": 5, "alpha": 0.6}
+        bp_ax = sns.barplot(data=stages_auroc_df, x='Stage', y='AUROC', hue='Stage',
+            order=self.sleep_stages_ls, palette=self.stages_colors, ax=axs,
+            capsize=.2,
+            errorbar=errorbar_def,
+            err_kws=errorbar_characteristics,
+            linewidth=1, edgecolor=".5", width=0.5, gap=0.1,
+            estimator=np.mean
+            )
+        for cont in bp_ax.containers:
+            plt.bar_label(cont, fmt='%.2f', fontsize=32, label_type='edge', padding=3, color='black', weight='bold')
+        axs.set_ylabel("AUROC", fontsize=32)
+        axs.set_xlabel("Sleep Stage", fontsize=32)
+        plt.xticks(fontsize=32)
+        plt.yticks(fontsize=32)
+        plt.ylim(0, 1)
+        #axs.set_title(f"{self.study_name}\nSpike Occ.Rate/min.\nNr.Patients = {nr_pats}", fontsize=48)
+        axs.set_title(f"{self.study_name}", fontsize=48)
+
+        axs.grid(True, linestyle='-', alpha=1, linewidth=1)
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.tight_layout()
+        plt.savefig(self.images_output_path / f"SOZ_prediction_Wilcoxon_Test_Results_Barchart.png")
+        plt.close()
+        
+        # ########################
+        # test_results = np.ones((len(self.sleep_stages_ls),len(self.sleep_stages_ls)))
+        # for ia, stage_name_a in enumerate( self.sleep_stages_ls):
+        #     aurocs_a = stages_auroc[stage_name_a]
+        #     assert len(aurocs_a) == nr_pats, "More than one entry per patient"
+        #     for ib, stage_name_b in enumerate(self.sleep_stages_ls):
+        #         aurocs_b = stages_auroc[stage_name_b]
+        #         assert len(aurocs_b) == nr_pats, "More than one entry per patient"
+        #         # run Wilcoxon signed-rank test
+        #         if ia != ib:
+        #             _, p_val_a = stats.shapiro(aurocs_a)
+        #             _, p_val_b = stats.shapiro(aurocs_b)
+
+        #             # If both samples are normally distributed, use paired t-test, otherwise use Wilcoxon signed-rank test
+        #             #if p_val_a >= 0.05 and p_val_b >= 0.05:
+        #             if False:
+        #                 # run paired t-test
+        #                 t_stat, p_val = stats.ttest_rel(spike_activity_a, spike_activity_b, nan_policy='raise', alternative='two-sided')
+        #                 #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
+        #             else:
+        #                 # run Wilcoxon signed-rank test
+        #                 #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
+        #                 # run Wilcoxon signed-rank test
+
+        #                 alternative_str = 'greater'
+        #                 if np.mean(aurocs_a) < np.mean(aurocs_b):
+        #                     alternative_str = 'less'
+        #                 alternative_str = 'two-sided'
+        #                 wilcoxon_stat, p_val = stats.wilcoxon(aurocs_a, aurocs_b, nan_policy='raise', alternative=alternative_str) # two-sided, 'less', 'greater'
+        #                 #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
+        #             test_results[ia,ib] = p_val
+        # pass
+
+        # # Create a mask
+        # mask = np.triu(np.ones_like(test_results, dtype=bool))
+        # threshold = 0.05
+
+        # correction_methods = ['bonferroni', 'sidak', 'holm-sidak', 'holm', 'fdr_bh', 'fdr_by', 'fdr_tsbh', 'fdr_tsbky']
+        # correction_methods = ['fdr_bh']
+
+        # for method in correction_methods:
+        #     corrected_test_results = test_results.copy()
+        #     for ri in range(corrected_test_results.shape[0]):
+        #         _, corrected_p_values, _, _ = multipletests(test_results[ri][test_results[ri]<100], alpha=0.05, method=method) # bonferroni, sidak, holm-sidak, holm, fdr_bh, fdr_by, fdr_tsbh, fdr_tsbky
+        #         corrected_test_results[ri][test_results[ri]<100] = corrected_p_values
+
+        #     #print(f"Bonferroni corrected threshold: {threshold:.3f}")
+        #     #print(f"Holm-Bonferroni corrected p-values:\n{corrected_test_results}")
+        #     #print(f"Uncorrected p-values:\n{test_results}")
+
+        #     # Plot the heatmap of the test results
+        #     fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
+        #     ax = sns.heatmap(corrected_test_results, vmin=0, vmax=threshold, center=threshold, mask=mask, cmap='coolwarm', annot=True, fmt=".3f", annot_kws={"size": 32}, linewidths=.5, linecolor='white', cbar_kws={"shrink": .8},ax=axs)
+        #     cbar = ax.collections[0].colorbar
+        #     # Adjust the font size of the colorbar tick labels
+        #     cbar.ax.tick_params(labelsize=32) # Set specific font size
+        #     cbar.set_label('p value', fontsize=32) # Set colorbar label
+
+        #     ax.grid(False)
+        #     ax.set_xticklabels(self.sleep_stages_ls, rotation=45, fontsize=32)
+        #     ax.set_yticklabels(self.sleep_stages_ls, rotation=0, fontsize=32)
+        #     alpha_str = r" $\alpha$"
+        #     plt.title(f"Spike Activity\nWilcoxon Signed-Rank Test p-values ({method} corrected)\n({alpha_str}:{threshold})", fontsize=36)
+        #     plt.get_current_fig_manager().full_screen_toggle()
+        #     plt.tight_layout()
+        #     plt.savefig(self.images_output_path / f"SOZ_prediction_Wilcoxon_Test_Results_{method}_corrected.png")
+        #     plt.close()
+        #     #######################
+
+        return stages_auroc
+
+    def plot_auroc_seizure_vs_no_seizure_patients(self, prediction_results_df:pd.DataFrame=None):
+
+        prediction_results_df = prediction_results_df[prediction_results_df.Metric=='AUROC'].reset_index(drop=True).copy()
+
+        # Plot SOZ vs Non-SOZ differences in spike activity across sleep stages
+        patients_ls = list(prediction_results_df.TestPatID.unique())
+        nr_pats = len(patients_ls)
+        print(f"Plotting AUROC from patients with and without seizures")
+        print(f"Nr. Patients: {nr_pats}")
+
+        prediction_results_df['HasSeizures'] = np.logical_or(prediction_results_df.NrClinicalSzrs > 0, prediction_results_df.NrElectroSzrs > 0)
+        prediction_results_df['HasSeizures'] = prediction_results_df.NrClinicalSzrs.to_numpy() > 0
+        prediction_results_df['HasSeizures'] = prediction_results_df['HasSeizures'].map({True: 'HasSeizures', False: 'NoSeizures'})
+
+        # Compare AUROC from patients with and without seizures
+        fig, axs = plt.subplots(1, 5, figsize=FIGSIZE)
+
+        # Compare AUROC from the differenet sleep-stages and from patients with and without seizures
+        legend_handles = []
+        legend_labels = []
+        aurocs_dict = {}
+        for si, stage_name in enumerate(self.sleep_stages_ls):
+            plt_ax = axs[si]
+            stage_data_df = prediction_results_df[prediction_results_df.Stage.str.fullmatch(stage_name, case=False)].copy().reset_index(drop=True)
+            auroc_no_seizures = stage_data_df.Value[stage_data_df.HasSeizures.str.fullmatch('NoSeizures', case=False)]
+            auroc_has_seizures = stage_data_df.Value[stage_data_df.HasSeizures.str.fullmatch('HasSeizures', case=False)]
+            assert auroc_no_seizures.shape[0] + auroc_has_seizures.shape[0] == nr_pats, f"More than one entry per patient for NoSeizures in stage {stage_name}"
+
+            aurocs_dict[stage_name] = {'NoSeizures': auroc_no_seizures, 'HasSeizures': auroc_has_seizures}
+
+            # Get confidence interval for AUROC
+            ci_range_no_seizures = self.bootstrap_confidence_interval_univariate(auroc_no_seizures, func=np.mean, confidence_level=0.95, n_resamples=10000)
+            ci_range_has_seizures = self.bootstrap_confidence_interval_univariate(auroc_has_seizures, func=np.mean, confidence_level=0.95, n_resamples=10000)
+
+            colors_soz = [c for c in self.stages_colors[stage_name]]
+            colors_soz.append(1)  # Add alpha channel for transparency
+            colors_non_soz = [c for c in self.stages_colors[stage_name]]
+            colors_non_soz.append(0.5)  # Add alpha channel for transparency
+            soz_colors_dict = {'HasSeizures':colors_soz, 'NoSeizures':colors_non_soz}
+
+            # plot barplot with error bars
+            errorbar_def = ("ci", 95)  # Percentile interval for error bars
+            errorbar_characteristics = {'color': 'red', "linestyle":'-', "linewidth": 5, "alpha": 0.6}
+            bp_ax = sns.barplot(data=stage_data_df, x='HasSeizures', y='Value', hue='HasSeizures', palette=soz_colors_dict, 
+                order=['NoSeizures', 'HasSeizures'],
+                capsize=.2,
+                errorbar=errorbar_def,
+                err_kws=errorbar_characteristics,
+                linewidth=1, edgecolor=".5", 
+                width=1, gap=0.0,
+                estimator=np.mean,
+                ax=plt_ax
+                )
+            # Add bar labels
+            for cont in bp_ax.containers:
+                labels = plt_ax.bar_label(cont, fmt='%.2f', fontsize=32, label_type='center', padding=0, rotation=90, color='black', weight='bold')
+                # Adjust label x position
+                for label in labels:
+                    x, y = label.get_position()
+                    label.set_x(x + 5)  # Adjust 
+            
+            # Add hatch pattern to differentiate SOZ and Non-SOZ
+            for pi, patch in enumerate(plt_ax.patches):
+                if pi == 0:
+                    # r, g, b, a = patch.get_facecolor() # Get current color (including alpha)
+                    #patch.set_facecolor((r, g, b, 0.5))
+                    patch.set_hatch('..')  # Add hatch pattern to differentiate SOZ and Non-SOZ
+                    fc = patch.get_facecolor()
+                    patch.set_edgecolor(fc)
+                    patch.set_facecolor('none')
+
+            # Show y-axis label only for the first subplot
+            if si == 0:
+                plt_ax.set_ylabel("AUROC", fontsize=32)
+            else:
+                plt_ax.set_ylabel("")
+                plt_ax.set_yticklabels("")
+
+            # Plot legend, set the handles and labels manually
+            # This is necessary to avoid grabbing the legend from the barplot's error bars
+            # and to ensure the legend is only for SOZ and Non-SOZ
+            for bar, patch_label in zip(bp_ax.patches[:2], ['NoSeizures', 'HasSeizures']):  # Adjust [:2] if you have more bars
+                legend_handles.append(bar)
+                legend_labels.append(patch_label)
+            #plt_ax.legend(handles, labels, fontsize=20, loc='upper left', frameon=False)
+
+            plt_ax.set_xlabel(stage_name, fontsize=32)
+            # plt_ax.tick_params(axis='x', labelsize=32, rotation=60)
+            plt_ax.set_xticklabels("")
+            plt_ax.tick_params(axis='y', labelsize=32)
+
+            plt_ax.set_ylim(0, 1)
+            plt_ax.set_title(f"{stage_name}", fontsize=32, color=self.stages_colors[stage_name], weight='bold')
+            plt_ax.set_title('')
+            # plt.xticks(fontsize=32)
+            # plt.yticks(fontsize=32)
+
+            print(f"\nStage: {stage_name}, NoSeizures mean AUROC={np.mean(auroc_no_seizures)}, CI= {ci_range_no_seizures[0]:.2f}-{ci_range_no_seizures[1]:.2f}")
+            print(f"Stage: {stage_name}, HasSeizures mean AUROC={np.mean(auroc_has_seizures)}, CI= {ci_range_has_seizures[0]:.2f}-{ci_range_has_seizures[1]:.2f}")
+
+        # Create new handles with black and white colors
+        custom_handles = [Patch(facecolor='black', edgecolor='black', label=legend_labels[0]),
+                          Patch(facecolor='none', edgecolor='black', label=legend_labels[1], hatch='..')]
+
+        fig.legend(custom_handles, legend_labels[0:2], fontsize=32, loc='upper right', frameon=False)
+
+        # Add a common title for the entire figure
+        plt.get_current_fig_manager().full_screen_toggle()
+        plt.suptitle(f"{self.study_name}", fontsize=48)
+        plt.subplots_adjust(wspace=1.1)
+        #plt.tight_layout()
+        plt.savefig(self.images_output_path / "AUROC_Score_HasSeizures_vs_NoSeizures.png")
+        #plt.waitforbuttonpress()
+        plt.close()
+        #print(res_dict)
+
+
+        # Perform Mann-Whitney U test
+        print("\nPerforming Mann-Whitney U to test AUROC from patients with and without Seizures")
+        for si, stage_name in enumerate(self.sleep_stages_ls):
+
+            has_szrs_aurocs = aurocs_dict[stage_name]['HasSeizures']
+            no_szrsaurocs = aurocs_dict[stage_name]['NoSeizures']
+
+            # test normality
+            _, p_val_soz = stats.shapiro(has_szrs_aurocs)
+            _, p_val_non_soz = stats.shapiro(no_szrsaurocs)
+
+            # Perform Mann-Whitney U test
+            res = stats.mannwhitneyu(has_szrs_aurocs, no_szrsaurocs, alternative='two-sided')
+            print(f"{stage_name} Mann-Whitney U test: U-statistic = {res.statistic:.2f}, p-value = {res.pvalue:.2e}")
+            pass
+             
+        return
+    
 
     def plot_soz_prediction_performance_vs_szr_count(self, prediction_results_df:pd.DataFrame=None):
         prediction_results_df = prediction_results_df[prediction_results_df.Metric=='AUROC'].reset_index(drop=True).copy()
@@ -1136,7 +1402,9 @@ if __name__ == "__main__":
 
         spike_data_df = spike_analyzer.get_patient_scaled_spike_data(spike_data_df)
         prediction_results_df = spike_analyzer.predict_soz_with_spike_activity(spike_data_df, add_features=False)
-        spike_analyzer.plot_soz_prediction_performance_vs_szr_count(prediction_results_df)
+        spike_analyzer.analyze_soz_prediction_performance(prediction_results_df.copy())
+        spike_analyzer.plot_auroc_seizure_vs_no_seizure_patients(prediction_results_df.copy())
+        #spike_analyzer.plot_soz_prediction_performance_vs_szr_count(prediction_results_df)
         prediction_results_ls.append(prediction_results_df)
         pass
 
