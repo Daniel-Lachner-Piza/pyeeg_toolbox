@@ -31,6 +31,27 @@ sns.set_style("whitegrid")
 
 FIGSIZE = (16, 8)
 
+
+# Utility function to convert hex color to rgb string
+def hex_to_rgb(hex_color):
+    hex_color = hex_color.lstrip('#')
+    if len(hex_color) == 3:
+        hex_color = ''.join([c*2 for c in hex_color])
+    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    return (r,g,b)
+
+STAGES_COLORS_SELECT = {
+    "Sleep": "#FF9532FF",    # Orange
+    "N1": "#FAE163",    # Light gold
+    "N2": "#29E8B2",    # Turquoise
+    "N3": "#4CA9EE",    # Sky blue
+    "REM": "#2F4571",   # Dark blue
+    "Wake": "#B93D4E",  # Light red
+    "Unknown": "#808080" # Gray
+}
+
+STAGES_COLORS = {stage_name:hex_to_rgb(color) for stage_name,color in STAGES_COLORS_SELECT.items()}
+
 class Spike_Activity_Analyzer:
     """
     Class to analyze spike activity in EEG data, including reading data, handling outliers, scaling, and plotting results.
@@ -70,7 +91,7 @@ class Spike_Activity_Analyzer:
         # ci_range = (res.confidence_interval.low, res.confidence_interval.high)
         return ci_range
 
-    def read_patient_spike_data(self):
+    def read_patient_spike_data(self, stage_duration_spike_rate_df: pd.DataFrame=None):
         nr_pats = len(self.pats_ls)
         # Concatenate data from all patients
         spike_data_df = pd.DataFrame()
@@ -85,6 +106,33 @@ class Spike_Activity_Analyzer:
                 pdata_df.loc[pdata_df.Stage.isnull().to_numpy(), 'Stage'] = 'NaN_SleepStage'
                 assert pdata_df.isna().sum().sum() == 0, f"NaN values in {pdata_fn}"
                 assert pdata_df.isnull().sum().sum() == 0, f"Null values in {pdata_fn}"
+
+                # Add weighted average spike activity for Sleep, i.e. the sum of all sleep stages N3, N2, N1, REM weighted by their duration
+                pat_stage_dur = stage_duration_spike_rate_df[stage_duration_spike_rate_df.PatID.str.fullmatch(pdata_fn, case=False)].reset_index(drop=True).copy()
+                pat_stage_dur = pat_stage_dur[pat_stage_dur.Stage.str.fullmatch('N3|N2|N1|REM', case=False)]
+                pdata_sleep_df = pdata_df[pdata_df.Stage.str.fullmatch('N3|N2|N1|REM', case=False)]
+                sleep_chann_data = {col_name:[] for col_name in pdata_df.columns.tolist()}
+                for chname in pdata_sleep_df.Channel.unique():
+                    chann_sel = pdata_sleep_df.Channel.str.fullmatch(chname, case=False)
+                    assert np.sum(chann_sel) == 4, f"More than one entry per sleep stage in {pdata_fn}"
+                    ch_amplitudes = pdata_sleep_df.loc[chann_sel, ['Stage','Amplitude']]
+                    ch_amplitudes.sort_values(by='Stage', axis=0, ascending=True, inplace=True)
+                    ch_stages_duration = pat_stage_dur[['Stage', 'StageDurM']].sort_values(by='Stage', axis=0, ascending=True)
+                    assert np.sum(ch_amplitudes.Stage.values == ch_stages_duration.Stage.values) == 4, "Sleep stages do not match in Amplitude and StageDurM"
+                    ch_weighted_amplitude = np.average(ch_amplitudes.Amplitude, weights=ch_stages_duration.StageDurM)
+                    nr_clips_with_spikes = pdata_sleep_df.loc[chann_sel, ['NrClipsWithSpikes']].max().values[0]
+                    ch_soz = pdata_sleep_df.loc[chann_sel, 'SOZ'].unique()
+                    assert len(ch_soz) == 1, f"More than one SOZ value for channel {chname} in {pdata_fn}"
+                    
+                    sleep_chann_data['Stage'].append('Sleep')
+                    sleep_chann_data['Channel'].append(chname)
+                    sleep_chann_data['Amplitude'].append(ch_weighted_amplitude)
+                    sleep_chann_data['NrClipsWithSpikes'].append(nr_clips_with_spikes)
+                    sleep_chann_data['SOZ'].append(ch_soz[0])
+                    sleep_chann_data['Patient'].append(pdata_fn.replace('_AvgSpikeWdwActivity.csv', ''))
+
+                    pass
+                pdata_df = pd.concat([pdata_df, pd.DataFrame(sleep_chann_data)], ignore_index=True)
 
                 spike_data_df = pd.concat([spike_data_df, pdata_df])
             except Exception as e:
@@ -114,6 +162,11 @@ class Spike_Activity_Analyzer:
             #print(data_fpath)
             try:
                 pdata_df = pd.read_csv(data_fpath)
+                pat_sleepdata_df = pdata_df[pdata_df.Stage.str.fullmatch('N3|N2|N1|REM', case=False)]
+                sleep_occ_rate = np.average(pat_sleepdata_df.SpikeOccRate, weights=pat_sleepdata_df.StageDurM)
+                pdata_sleep_df = {'PatID': pdata_df.PatID.unique()[0], 'Stage': 'Sleep', 'StageDurM': pat_sleepdata_df.StageDurM.sum(), 'SpikeOccRate': sleep_occ_rate}
+                pdata_sleep_df = pd.DataFrame(pdata_sleep_df, index=[0])
+                pdata_df = pd.concat([pdata_sleep_df, pdata_df], ignore_index=True)
                 stage_duration_spike_rate_df = pd.concat([stage_duration_spike_rate_df, pdata_df])
             except:
                 print(f"File {pdata_fn} not found")
@@ -201,7 +254,8 @@ class Spike_Activity_Analyzer:
         
         # Analyze Sleep Stages Duration and Confidence Intervals
         stages_ci_ranges = {}
-        for stage_name in stage_duration_spike_rate_orig_df.Stage.unique():
+        stages_ls = stage_duration_spike_rate_orig_df.Stage.unique().tolist()
+        for stage_name in stages_ls:
             stage_sel = stage_duration_spike_rate_orig_df.Stage.str.fullmatch(stage_name, case=False)
             assert stage_sel.sum() == nr_pats, "More than one entry per patient"
             all_pats_stage_durations = stage_duration_spike_rate_orig_df.loc[stage_sel, 'StageDurM'].to_numpy()/60
@@ -217,7 +271,7 @@ class Spike_Activity_Analyzer:
 
         # Plot Sleep Stages N3, N2, N1, REM
         stage_duration_spike_rate_df = stage_duration_spike_rate_orig_df.copy()
-        to_plot_stage_names = ['N3', 'N2', 'N1', 'REM']
+        to_plot_stage_names = ['Sleep', 'N3', 'N2', 'N1', 'REM', 'Wake']
         stage_duration_spike_rate_df['StageDurH'] = stage_duration_spike_rate_df.StageDurM / 60.0 # convert to hours
         to_plot_stage_sel = stage_duration_spike_rate_df.Stage.isin(to_plot_stage_names)
         stage_duration_spike_rate_df = stage_duration_spike_rate_df[to_plot_stage_sel].reset_index(drop=True).copy()
@@ -238,32 +292,32 @@ class Spike_Activity_Analyzer:
         axs.set_xlabel("Sleep Stage", fontsize=32)
         axs.tick_params(axis='x', labelsize=32)
         axs.tick_params(axis='y', labelsize=32)
-        axs.set_ylim(0, 16) # set y-axis limit to 60 minutes
-
-        # Plot Sleep Stages N2, N1, REM, Wake
-        axs = all_axs[1]
-        to_plot_stage_names = ['N2', 'N1', 'REM', 'Wake']
-        stage_duration_spike_rate_df = stage_duration_spike_rate_orig_df.copy()
-        stage_duration_spike_rate_df['StageDurH'] = stage_duration_spike_rate_df.StageDurM / 60.0 # convert to hours
-        to_plot_stage_sel = stage_duration_spike_rate_df.Stage.isin(to_plot_stage_names)
-        stage_duration_spike_rate_df = stage_duration_spike_rate_df[to_plot_stage_sel].reset_index(drop=True).copy()
-        to_plot_stages_colors = [self.stages_colors[k] for k in to_plot_stage_names]
-        assert nr_pats == len(stage_duration_spike_rate_df.PatID.unique()), "More than one entry per patient"
-        bp_ax = sns.barplot(data=stage_duration_spike_rate_df, x='Stage', y='StageDurH', hue='Stage', 
-            order=to_plot_stage_names, palette=to_plot_stages_colors, ax=axs,
-            capsize=.2,
-            errorbar=errorbar_def,
-            err_kws=errorbar_characteristics,
-            linewidth=1, edgecolor=".5", width=0.5, gap=0.1,
-            estimator=np.mean
-            )
-        for cont in bp_ax.containers:
-            axs.bar_label(cont, fmt='%.2f', fontsize=32, label_type='edge', padding=3, color='black', weight='bold')
-        axs.set_ylabel("Duration (hours)", fontsize=32)
-        axs.set_xlabel("Sleep Stage", fontsize=32)
-        axs.tick_params(axis='x', labelsize=32)
-        axs.tick_params(axis='y', labelsize=32)
         axs.set_ylim(0, 41) # set y-axis limit to 60 minutes
+
+        # # Plot Sleep Stages N2, N1, REM, Wake
+        # axs = all_axs[1]
+        # to_plot_stage_names = ['N2', 'N1', 'REM', 'Wake']
+        # stage_duration_spike_rate_df = stage_duration_spike_rate_orig_df.copy()
+        # stage_duration_spike_rate_df['StageDurH'] = stage_duration_spike_rate_df.StageDurM / 60.0 # convert to hours
+        # to_plot_stage_sel = stage_duration_spike_rate_df.Stage.isin(to_plot_stage_names)
+        # stage_duration_spike_rate_df = stage_duration_spike_rate_df[to_plot_stage_sel].reset_index(drop=True).copy()
+        # to_plot_stages_colors = [self.stages_colors[k] for k in to_plot_stage_names]
+        # assert nr_pats == len(stage_duration_spike_rate_df.PatID.unique()), "More than one entry per patient"
+        # bp_ax = sns.barplot(data=stage_duration_spike_rate_df, x='Stage', y='StageDurH', hue='Stage', 
+        #     order=to_plot_stage_names, palette=to_plot_stages_colors, ax=axs,
+        #     capsize=.2,
+        #     errorbar=errorbar_def,
+        #     err_kws=errorbar_characteristics,
+        #     linewidth=1, edgecolor=".5", width=0.5, gap=0.1,
+        #     estimator=np.mean
+        #     )
+        # for cont in bp_ax.containers:
+        #     axs.bar_label(cont, fmt='%.2f', fontsize=32, label_type='edge', padding=3, color='black', weight='bold')
+        # axs.set_ylabel("Duration (hours)", fontsize=32)
+        # axs.set_xlabel("Sleep Stage", fontsize=32)
+        # axs.tick_params(axis='x', labelsize=32)
+        # axs.tick_params(axis='y', labelsize=32)
+        # axs.set_ylim(0, 41) # set y-axis limit to 60 minutes
 
         plt.suptitle(f"{self.study_name}", fontsize=48)
 
@@ -379,7 +433,7 @@ class Spike_Activity_Analyzer:
         print(f"Spike Occurrence Rate Differences between Sleep Stages")
         print(f"Nr. Patients: {nr_pats}")
 
-        stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
+        stages_ls = self.sleep_stages_ls
         test_results = np.ones((len(stages_ls),len(stages_ls)))+100
         for ia, stage_name_a in enumerate(stages_ls):
             stage_sel_a = stage_duration_spike_rate_df.Stage.str.fullmatch(stage_name_a, case=False)
@@ -522,7 +576,7 @@ class Spike_Activity_Analyzer:
         # Get average spike activity per stage for each patient
         all_pats_avg_stage_activity = spike_data_df[['Patient', 'Stage', 'Amplitude']].groupby(['Patient','Stage']).mean().reset_index()
 
-        stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
+        stages_ls = self.sleep_stages_ls
         test_results = np.ones((len(stages_ls),len(stages_ls)))+100
         for ia, stage_name_a in enumerate(stages_ls):
             stage_sel_a = all_pats_avg_stage_activity.Stage.str.fullmatch(stage_name_a, case=False)
@@ -835,7 +889,7 @@ class Spike_Activity_Analyzer:
             pass
 
         # Analyze Activity Differences        
-        stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
+        stages_ls = self.sleep_stages_ls
         test_results = np.ones((len(stages_ls),len(stages_ls)))+100
         for ia, stage_name_a in enumerate(stages_ls):
             spike_activity_a_diff = all_pats_diff[stage_name_a]
@@ -1372,8 +1426,9 @@ if __name__ == "__main__":
         pats_ls = list(study.patients.keys())
         characterization_datapath = pyeeg_output_path / "Spike_Characterized_Channels"
         stages_spikes_duration_rate_datapath = pyeeg_output_path / "Stage_Spike_Occurrence_Rate"
-        an_sleep_stages_ls = ['N3', 'N2', 'N1', 'REM', 'Wake']
+        an_sleep_stages_ls = ['Sleep', 'N3', 'N2', 'N1', 'REM', 'Wake']
         stages_colors = {'N1':(250,223,99), 'N2':(41,232,178), 'N3':(76,169,238), 'REM':(47,69,113), 'Wake':(224,115,120), 'Unknown':(128,128,128)}
+        stages_colors = STAGES_COLORS
         for k,v in stages_colors.items():
             stages_colors[k] = (v[0]/255, v[1]/255, v[2]/255)
         spike_analyzer = Spike_Activity_Analyzer(study.dataset_name, characterization_datapath, stages_spikes_duration_rate_datapath, pats_ls, an_sleep_stages_ls, stages_colors, images_opath, szr_cnt_df)
@@ -1381,7 +1436,7 @@ if __name__ == "__main__":
         # Read and analyze sleep stages and spike occurrence rate data
         stage_duration_spike_rate_df = spike_analyzer.read_stages_duration_and_spike_rates()
         # Read and analyze spike actvity data (average spike amplitude)
-        spike_data_df = spike_analyzer.read_patient_spike_data()
+        spike_data_df = spike_analyzer.read_patient_spike_data(stage_duration_spike_rate_df.copy())
 
         # Analyze differences in sleep stage durations
         spike_analyzer.plot_group_sleep_stage_durations_barchart(stage_duration_spike_rate_df)
