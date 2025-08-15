@@ -1410,7 +1410,7 @@ if __name__ == "__main__":
 
     # Predict SOZ based on Spike Activity
     studies_ls =  [fr_ILAES2025_patients(), ACH_Pediatric_Patients_All()]
-    studies_ls =  [ACH_Pediatric_Patients_All()]
+    studies_ls =  [fr_ILAES2025_patients()]
 
     prediction_results_ls = []
     for study in studies_ls:
