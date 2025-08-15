@@ -1075,74 +1075,74 @@ class Spike_Activity_Analyzer:
         plt.savefig(self.images_output_path / f"SOZ_prediction_Wilcoxon_Test_Results_Barchart.png")
         plt.close()
         
-        # ########################
-        # test_results = np.ones((len(self.sleep_stages_ls),len(self.sleep_stages_ls)))
-        # for ia, stage_name_a in enumerate( self.sleep_stages_ls):
-        #     aurocs_a = stages_auroc[stage_name_a]
-        #     assert len(aurocs_a) == nr_pats, "More than one entry per patient"
-        #     for ib, stage_name_b in enumerate(self.sleep_stages_ls):
-        #         aurocs_b = stages_auroc[stage_name_b]
-        #         assert len(aurocs_b) == nr_pats, "More than one entry per patient"
-        #         # run Wilcoxon signed-rank test
-        #         if ia != ib:
-        #             _, p_val_a = stats.shapiro(aurocs_a)
-        #             _, p_val_b = stats.shapiro(aurocs_b)
+        ########################
+        test_results = np.ones((len(self.sleep_stages_ls),len(self.sleep_stages_ls)))
+        for ia, stage_name_a in enumerate( self.sleep_stages_ls):
+            aurocs_a = stages_auroc[stage_name_a]
+            assert len(aurocs_a) == nr_pats, "More than one entry per patient"
+            for ib, stage_name_b in enumerate(self.sleep_stages_ls):
+                aurocs_b = stages_auroc[stage_name_b]
+                assert len(aurocs_b) == nr_pats, "More than one entry per patient"
+                # run Wilcoxon signed-rank test
+                if ia != ib:
+                    _, p_val_a = stats.shapiro(aurocs_a)
+                    _, p_val_b = stats.shapiro(aurocs_b)
 
-        #             # If both samples are normally distributed, use paired t-test, otherwise use Wilcoxon signed-rank test
-        #             #if p_val_a >= 0.05 and p_val_b >= 0.05:
-        #             if False:
-        #                 # run paired t-test
-        #                 t_stat, p_val = stats.ttest_rel(spike_activity_a, spike_activity_b, nan_policy='raise', alternative='two-sided')
-        #                 #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
-        #             else:
-        #                 # run Wilcoxon signed-rank test
-        #                 #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
-        #                 # run Wilcoxon signed-rank test
+                    # If both samples are normally distributed, use paired t-test, otherwise use Wilcoxon signed-rank test
+                    #if p_val_a >= 0.05 and p_val_b >= 0.05:
+                    if False:
+                        # run paired t-test
+                        t_stat, p_val = stats.ttest_rel(spike_activity_a, spike_activity_b, nan_policy='raise', alternative='two-sided')
+                        #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nPaired t-test: t-statistic = {t_stat:.2f}, p-value = {p_val:.3f}")
+                    else:
+                        # run Wilcoxon signed-rank test
+                        #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
+                        # run Wilcoxon signed-rank test
 
-        #                 alternative_str = 'greater'
-        #                 if np.mean(aurocs_a) < np.mean(aurocs_b):
-        #                     alternative_str = 'less'
-        #                 alternative_str = 'two-sided'
-        #                 wilcoxon_stat, p_val = stats.wilcoxon(aurocs_a, aurocs_b, nan_policy='raise', alternative=alternative_str) # two-sided, 'less', 'greater'
-        #                 #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
-        #             test_results[ia,ib] = p_val
-        # pass
+                        alternative_str = 'greater'
+                        if np.mean(aurocs_a) < np.mean(aurocs_b):
+                            alternative_str = 'less'
+                        alternative_str = 'two-sided'
+                        wilcoxon_stat, p_val = stats.wilcoxon(aurocs_a, aurocs_b, nan_policy='raise', alternative=alternative_str) # two-sided, 'less', 'greater'
+                        #print(f"Spike Occ.Rate {stage_name_a} vs {stage_name_b}\nWilcoxon signed-rank test: statistic = {wilcoxon_stat:.2f}, p-value = {wilcoxon_p_val:.3f}")
+                    test_results[ia,ib] = p_val
+        pass
 
-        # # Create a mask
-        # mask = np.triu(np.ones_like(test_results, dtype=bool))
-        # threshold = 0.05
+        # Create a mask
+        mask = np.triu(np.ones_like(test_results, dtype=bool))
+        threshold = 0.05
 
-        # correction_methods = ['bonferroni', 'sidak', 'holm-sidak', 'holm', 'fdr_bh', 'fdr_by', 'fdr_tsbh', 'fdr_tsbky']
-        # correction_methods = ['fdr_bh']
+        correction_methods = ['bonferroni', 'sidak', 'holm-sidak', 'holm', 'fdr_bh', 'fdr_by', 'fdr_tsbh', 'fdr_tsbky']
+        correction_methods = ['fdr_bh']
 
-        # for method in correction_methods:
-        #     corrected_test_results = test_results.copy()
-        #     for ri in range(corrected_test_results.shape[0]):
-        #         _, corrected_p_values, _, _ = multipletests(test_results[ri][test_results[ri]<100], alpha=0.05, method=method) # bonferroni, sidak, holm-sidak, holm, fdr_bh, fdr_by, fdr_tsbh, fdr_tsbky
-        #         corrected_test_results[ri][test_results[ri]<100] = corrected_p_values
+        for method in correction_methods:
+            corrected_test_results = test_results.copy()
+            for ri in range(corrected_test_results.shape[0]):
+                _, corrected_p_values, _, _ = multipletests(test_results[ri][test_results[ri]<100], alpha=0.05, method=method) # bonferroni, sidak, holm-sidak, holm, fdr_bh, fdr_by, fdr_tsbh, fdr_tsbky
+                corrected_test_results[ri][test_results[ri]<100] = corrected_p_values
 
-        #     #print(f"Bonferroni corrected threshold: {threshold:.3f}")
-        #     #print(f"Holm-Bonferroni corrected p-values:\n{corrected_test_results}")
-        #     #print(f"Uncorrected p-values:\n{test_results}")
+            #print(f"Bonferroni corrected threshold: {threshold:.3f}")
+            #print(f"Holm-Bonferroni corrected p-values:\n{corrected_test_results}")
+            #print(f"Uncorrected p-values:\n{test_results}")
 
-        #     # Plot the heatmap of the test results
-        #     fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
-        #     ax = sns.heatmap(corrected_test_results, vmin=0, vmax=threshold, center=threshold, mask=mask, cmap='coolwarm', annot=True, fmt=".3f", annot_kws={"size": 32}, linewidths=.5, linecolor='white', cbar_kws={"shrink": .8},ax=axs)
-        #     cbar = ax.collections[0].colorbar
-        #     # Adjust the font size of the colorbar tick labels
-        #     cbar.ax.tick_params(labelsize=32) # Set specific font size
-        #     cbar.set_label('p value', fontsize=32) # Set colorbar label
+            # Plot the heatmap of the test results
+            fig, axs = plt.subplots(1, 1, figsize=FIGSIZE)
+            ax = sns.heatmap(corrected_test_results, vmin=0, vmax=threshold, center=threshold, mask=mask, cmap='coolwarm', annot=True, fmt=".3f", annot_kws={"size": 32}, linewidths=.5, linecolor='white', cbar_kws={"shrink": .8},ax=axs)
+            cbar = ax.collections[0].colorbar
+            # Adjust the font size of the colorbar tick labels
+            cbar.ax.tick_params(labelsize=32) # Set specific font size
+            cbar.set_label('p value', fontsize=32) # Set colorbar label
 
-        #     ax.grid(False)
-        #     ax.set_xticklabels(self.sleep_stages_ls, rotation=45, fontsize=32)
-        #     ax.set_yticklabels(self.sleep_stages_ls, rotation=0, fontsize=32)
-        #     alpha_str = r" $\alpha$"
-        #     plt.title(f"Spike Activity\nWilcoxon Signed-Rank Test p-values ({method} corrected)\n({alpha_str}:{threshold})", fontsize=36)
-        #     plt.get_current_fig_manager().full_screen_toggle()
-        #     plt.tight_layout()
-        #     plt.savefig(self.images_output_path / f"SOZ_prediction_Wilcoxon_Test_Results_{method}_corrected.png")
-        #     plt.close()
-        #     #######################
+            ax.grid(False)
+            ax.set_xticklabels(self.sleep_stages_ls, rotation=45, fontsize=32)
+            ax.set_yticklabels(self.sleep_stages_ls, rotation=0, fontsize=32)
+            alpha_str = r" $\alpha$"
+            plt.title(f"Spike Activity\nWilcoxon Signed-Rank Test p-values ({method} corrected)\n({alpha_str}:{threshold})", fontsize=36)
+            plt.get_current_fig_manager().full_screen_toggle()
+            plt.tight_layout()
+            plt.savefig(self.images_output_path / f"SOZ_prediction_Wilcoxon_Test_Results_{method}_corrected.png")
+            plt.close()
+            #######################
 
         return stages_auroc
 
